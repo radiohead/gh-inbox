@@ -81,7 +81,7 @@ func TestFetchReviewRequestedPRs(t *testing.T) {
 					ReviewRequests: ReviewRequestConnection{
 						Nodes: []ReviewRequest{
 							{AsCodeOwner: false, RequestedReviewer: RequestedReviewer{Type: "User", Login: "alice"}},
-							{AsCodeOwner: true, RequestedReviewer: RequestedReviewer{Type: "Team", Name: "backend", Slug: "backend-team"}},
+							{AsCodeOwner: true, RequestedReviewer: RequestedReviewer{Type: "Team", Login: "backend-team"}},
 						},
 					},
 				},

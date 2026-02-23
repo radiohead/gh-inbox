@@ -33,9 +33,8 @@ func convertSearchPRNode(n searchPRNode) PullRequest {
 			}
 		case "Team":
 			reviewer = RequestedReviewer{
-				Type: "Team",
-				Name: rr.RequestedReviewer.Team.Name,
-				Slug: rr.RequestedReviewer.Team.Slug,
+				Type:  "Team",
+				Login: rr.RequestedReviewer.Team.Slug,
 			}
 		default:
 			reviewer = RequestedReviewer{Type: rr.RequestedReviewer.TypeName}

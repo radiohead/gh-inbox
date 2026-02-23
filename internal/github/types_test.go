@@ -101,7 +101,7 @@ func TestPullRequestUnmarshal(t *testing.T) {
 					"nodes": [
 						{
 							"asCodeOwner": true,
-							"requestedReviewer": {"type": "Team", "name": "backend", "slug": "backend-team"}
+							"requestedReviewer": {"type": "Team", "login": "backend-team"}
 						}
 					]
 				}
@@ -115,7 +115,7 @@ func TestPullRequestUnmarshal(t *testing.T) {
 					Nodes: []ReviewRequest{
 						{
 							AsCodeOwner:       true,
-							RequestedReviewer: RequestedReviewer{Type: "Team", Name: "backend", Slug: "backend-team"},
+							RequestedReviewer: RequestedReviewer{Type: "Team", Login: "backend-team"},
 						},
 					},
 				},
