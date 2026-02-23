@@ -11,42 +11,52 @@ func TestValidatePRsFlags(t *testing.T) {
 		wantErr string // empty means no error expected
 	}{
 		{
-			name: "no flags",
-			opts: prsOptions{},
+			name:    "no flags (missing org)",
+			opts:    prsOptions{},
+			wantErr: "--org is required",
 		},
 		{
-			name: "review only",
+			name: "org only",
+			opts: prsOptions{org: "test-org"},
+		},
+		{
+			name: "review only (missing org)",
 			opts: prsOptions{review: true},
+			wantErr: "--org is required",
 		},
 		{
-			name: "authored only",
-			opts: prsOptions{authored: true},
+			name: "org with review",
+			opts: prsOptions{org: "test-org", review: true},
 		},
 		{
-			name: "review and authored",
-			opts: prsOptions{review: true, authored: true},
+			name: "org with authored",
+			opts: prsOptions{org: "test-org", authored: true},
 		},
 		{
-			name: "review with include-codeowners",
-			opts: prsOptions{review: true, includeCodeowners: true},
+			name: "org with review and authored",
+			opts: prsOptions{org: "test-org", review: true, authored: true},
 		},
 		{
-			name: "review with codeowners-solo",
-			opts: prsOptions{review: true, codeownersSolo: true},
+			name: "org with review and include-codeowners",
+			opts: prsOptions{org: "test-org", review: true, includeCodeowners: true},
+		},
+		{
+			name: "org with review and codeowners-solo",
+			opts: prsOptions{org: "test-org", review: true, codeownersSolo: true},
 		},
 		{
 			name:    "include-codeowners without review",
-			opts:    prsOptions{includeCodeowners: true},
+			opts:    prsOptions{org: "test-org", includeCodeowners: true},
 			wantErr: "--include-codeowners requires --review",
 		},
 		{
 			name:    "codeowners-solo without review",
-			opts:    prsOptions{codeownersSolo: true},
+			opts:    prsOptions{org: "test-org", codeownersSolo: true},
 			wantErr: "--codeowners-solo requires --review",
 		},
 		{
 			name:    "include-codeowners and codeowners-solo together",
-			opts:    prsOptions{review: true, includeCodeowners: true, codeownersSolo: true},
+			opts:    prsOptions{org: "test-org", review: true, includeCodeowners: true, codeownersSolo: true},
 			wantErr: "--include-codeowners and --codeowners-solo are mutually exclusive",
 		},
 	}
