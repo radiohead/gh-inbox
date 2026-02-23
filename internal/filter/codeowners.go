@@ -33,7 +33,7 @@ type IsMyTeamFunc func(org, slug string) bool
 //  1. Extract org from PR.Repository.NameWithOwner (split on "/").
 //  2. Classify each review request as "mine" or "other":
 //     - "mine" if Type=="User" and Login==myLogin
-//     - "mine" if Type=="Team" and isMyTeam(org, Slug) returns true
+//     - "mine" if Type=="Team" and isMyTeam(org, Login) returns true
 //     - otherwise "other"
 //  3. If mode == ModeIncludeAll: always include.
 //  4. If no "mine" requests: skip.
@@ -76,7 +76,7 @@ func includePR(pr github.PullRequest, myLogin string, isMyTeam IsMyTeamFunc, mod
 		case "User":
 			isMine = rr.RequestedReviewer.Login == myLogin
 		case "Team":
-			isMine = isMyTeam(org, rr.RequestedReviewer.Slug)
+			isMine = isMyTeam(org, rr.RequestedReviewer.Login)
 		}
 
 		if isMine {

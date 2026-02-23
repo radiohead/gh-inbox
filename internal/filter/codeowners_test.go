@@ -37,8 +37,8 @@ func teamReq(slug string, asCodeOwner bool) github.ReviewRequest {
 	return github.ReviewRequest{
 		AsCodeOwner: asCodeOwner,
 		RequestedReviewer: github.RequestedReviewer{
-			Type: "Team",
-			Slug: slug,
+			Type:  "Team",
+			Login: slug,
 		},
 	}
 }
