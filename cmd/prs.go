@@ -10,6 +10,7 @@ import (
 )
 
 type prsOptions struct {
+	org               string
 	review            bool
 	authored          bool
 	includeCodeowners bool
@@ -26,20 +27,14 @@ var prsCmd = &cobra.Command{
 			return err
 		}
 
-		// T1: hardcoded dummy data — real fetch implemented in T2.
-		prs := []github.PullRequest{
-			{
-				Number:     1234,
-				Title:      "Add CODEOWNERS support",
-				URL:        "https://github.com/example/repo/pull/1234",
-				Repository: github.Repository{NameWithOwner: "example/repo"},
-			},
-			{
-				Number:     5678,
-				Title:      "Fix nil pointer in filter",
-				URL:        "https://github.com/example/repo/pull/5678",
-				Repository: github.Repository{NameWithOwner: "example/repo"},
-			},
+		client, err := github.NewClient()
+		if err != nil {
+			return fmt.Errorf("creating GitHub client: %w", err)
+		}
+
+		prs, err := client.FetchReviewRequestedPRs(prsOpts.org)
+		if err != nil {
+			return fmt.Errorf("fetching PRs: %w", err)
 		}
 
 		return output.WriteJSON(cmd.OutOrStdout(), prs)
@@ -48,6 +43,9 @@ var prsCmd = &cobra.Command{
 
 // validatePRsFlags checks for invalid flag combinations.
 func validatePRsFlags(opts prsOptions) error {
+	if opts.org == "" {
+		return fmt.Errorf("--org is required")
+	}
 	if opts.includeCodeowners && !opts.review {
 		return fmt.Errorf("--include-codeowners requires --review")
 	}
@@ -61,6 +59,7 @@ func validatePRsFlags(opts prsOptions) error {
 }
 
 func init() {
+	prsCmd.Flags().StringVar(&prsOpts.org, "org", "", "GitHub organization to query (required)")
 	prsCmd.Flags().BoolVar(&prsOpts.review, "review", false, "Show PRs awaiting my review")
 	prsCmd.Flags().BoolVar(&prsOpts.authored, "authored", false, "Show my PRs needing attention")
 	prsCmd.Flags().BoolVar(&prsOpts.includeCodeowners, "include-codeowners", false, "Include PRs where I'm only a CODEOWNERS reviewer (requires --review)")

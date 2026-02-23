@@ -23,13 +23,13 @@ flags (`--review`, `--authored`, `--json`), then wires fetch + output.
 
 All API interaction. Key files:
 
-| File | Responsibility |
-|------|----------------|
-| `client.go` | GraphQL + REST client, delegates auth to `gh auth token` |
-| `queries.go` | All GraphQL query strings |
-| `prs.go` | PR fetching + CODEOWNERS filtering logic |
-| `issues.go` | Issue fetching + mention-response detection |
-| `discussions.go` | Discussion fetching + unanswered-reply detection |
+| File | Responsibility | Status |
+|------|----------------|--------|
+| `client.go` | `graphQLDoer` interface, `Client` struct, `NewClient()` / `NewClientWithDoer()` | ✅ implemented |
+| `queries.go` | GraphQL query structs + `buildReviewRequestedSearchQuery()` | ✅ implemented |
+| `prs.go` | `FetchReviewRequestedPRs()`, `convertSearchPRNode()` | ✅ implemented |
+| `issues.go` | Issue fetching + mention-response detection | planned |
+| `discussions.go` | Discussion fetching + unanswered-reply detection | planned |
 
 ### `output/`
 
