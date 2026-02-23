@@ -25,11 +25,20 @@ All API interaction. Key files:
 
 | File | Responsibility | Status |
 |------|----------------|--------|
-| `client.go` | `graphQLDoer` interface, `Client` struct, `NewClient()` / `NewClientWithDoer()` | ✅ implemented |
+| `client.go` | `graphQLDoer`/`restDoer` interfaces, `Client` struct, `NewClient()` / `NewClientWithDoer()` / `NewClientWithDoers()` | ✅ implemented |
 | `queries.go` | GraphQL query structs + `buildReviewRequestedSearchQuery()` | ✅ implemented |
 | `prs.go` | `FetchReviewRequestedPRs()`, `convertSearchPRNode()` | ✅ implemented |
+| `team_members.go` | `FetchCurrentUser()`, `IsTeamMember()` with lazy REST cache | ✅ implemented |
 | `issues.go` | Issue fetching + mention-response detection | planned |
 | `discussions.go` | Discussion fetching + unanswered-reply detection | planned |
+
+### `filter/`
+
+Client-side filtering logic, independent of API details.
+
+| File | Responsibility | Status |
+|------|----------------|--------|
+| `codeowners.go` | `CodeOwners()` — filters PRs by CODEOWNERS mode (Default/IncludeAll/Solo) | ✅ implemented |
 
 ### `output/`
 
@@ -64,6 +73,6 @@ The `github.Client` calls `gh auth token` once at startup and reuses the result.
 ## API Strategy
 
 - GraphQL for all structured data (PRs, issues, discussions, review threads)
-- REST only for Notifications (`/notifications` endpoint, REST-only)
+- REST for Notifications (`/notifications`) and team membership (`/orgs/{org}/teams/{slug}/members`)
 - Single batched query per subcommand where possible to minimize API calls
 - GraphQL rate limit: 5000 points/hr — well within budget for typical usage

@@ -5,6 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/radiohead/gh-inbox/internal/filter"
 	"github.com/radiohead/gh-inbox/internal/github"
 	"github.com/radiohead/gh-inbox/internal/output"
 )
@@ -35,6 +36,23 @@ var prsCmd = &cobra.Command{
 		prs, err := client.FetchReviewRequestedPRs(prsOpts.org)
 		if err != nil {
 			return fmt.Errorf("fetching PRs: %w", err)
+		}
+
+		if prsOpts.review {
+			login, err := client.FetchCurrentUser()
+			if err != nil {
+				return fmt.Errorf("fetching current user: %w", err)
+			}
+			mode := filter.ModeDefault
+			if prsOpts.includeCodeowners {
+				mode = filter.ModeIncludeAll
+			} else if prsOpts.codeownersSolo {
+				mode = filter.ModeSolo
+			}
+			isMyTeam := func(org, slug string) bool {
+				return client.IsTeamMember(org, slug, login)
+			}
+			prs = filter.CodeOwners(prs, login, isMyTeam, mode)
 		}
 
 		return output.WriteJSON(cmd.OutOrStdout(), prs)
