@@ -15,11 +15,17 @@ type restDoer interface {
 	Get(path string, resp interface{}) error
 }
 
+// Cacher is an optional key-value cache used by Client to avoid redundant API calls.
+type Cacher interface {
+	Get(key string) ([]byte, bool, error) // data, found, error
+	Set(key string, data []byte) error
+}
+
 // Client wraps a GraphQL client for GitHub API access.
 type Client struct {
-	gql         graphQLDoer
-	rest        restDoer
-	teamMembers map[string]map[string]bool // cache: "org/slug" -> set of member logins
+	gql   graphQLDoer
+	rest  restDoer
+	cache Cacher // optional; nil means no caching
 }
 
 // NewClient creates a Client using the default gh CLI authentication.

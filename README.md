@@ -6,12 +6,12 @@ CLI tool that surfaces GitHub items needing your attention with smart CODEOWNERS
 
 ```bash
 make build
-gh inbox                    # show all action items (table)
-gh inbox prs --review       # PRs awaiting my review
-gh inbox prs --authored     # my PRs needing attention
-gh inbox issues             # issues needing action
-gh inbox discussions        # discussions needing response
-gh inbox --json             # machine-readable output
+gh inbox prs review --org grafana              # PRs awaiting my review
+gh inbox prs review --org grafana --filter direct    # hide CODEOWNERS-only noise
+gh inbox prs review --org grafana --filter codeowner # sole CODEOWNERS reviewer
+gh inbox prs authored                          # my PRs needing attention
+gh inbox issues                               # issues needing action
+gh inbox discussions                          # discussions needing response
 ```
 
 ## Features
@@ -24,13 +24,14 @@ gh inbox --json             # machine-readable output
 ## Pipeline
 
 ```
-GitHub GraphQL API → fetch + filter → table / JSON output
+GitHub GraphQL API → github/ → service/ + filter/ → output/
 ```
 
 | Stage | Package | Responsibility |
 |-------|---------|----------------|
-| Fetch | `github/` | GraphQL queries, auth via `gh auth token` |
-| Filter | `github/prs.go`, `github/issues.go` | CODEOWNERS logic, response detection |
+| Fetch | `github/` | GraphQL queries, REST calls, auth via `gh auth token` |
+| Cache | `service/` | In-process team membership cache with fail-open semantics |
+| Filter | `filter/` | CODEOWNERS dispatch: all / direct / codeowner modes |
 | Output | `output/` | Table renderer, JSON serializer |
 
 ## Development

@@ -60,88 +60,53 @@ func TestFetchCurrentUser(t *testing.T) {
 	}
 }
 
-func TestIsTeamMember(t *testing.T) {
-	buildMembersResponse := func(logins []string) func(path string, resp interface{}) error {
-		return func(path string, resp interface{}) error {
-			members := resp.(*[]teamMemberResponse)
-			for _, login := range logins {
-				*members = append(*members, teamMemberResponse{Login: login})
-			}
-			return nil
-		}
-	}
-
+func TestFetchTeamMembers(t *testing.T) {
 	tests := []struct {
 		name    string
 		getFunc func(path string, resp interface{}) error
-		org     string
-		slug    string
-		login   string
-		want    bool
+		want    []TeamMember
+		wantErr bool
 	}{
 		{
-			name:      "cache miss, user IS member",
-			getFunc:   buildMembersResponse([]string{"alice", "bob"}),
-			org:       "test-org",
-			slug:      "backend",
-			login: "alice",
-			want:  true,
+			name: "returns members on success",
+			getFunc: func(path string, resp interface{}) error {
+				members := resp.(*[]TeamMember)
+				*members = []TeamMember{{Login: "alice"}, {Login: "bob"}}
+				return nil
+			},
+			want: []TeamMember{{Login: "alice"}, {Login: "bob"}},
 		},
 		{
-			name:    "cache miss, user is NOT member",
-			getFunc: buildMembersResponse([]string{"carol", "dave"}),
-			org:     "test-org",
-			slug:    "backend",
-			login:   "alice",
-			want:    false,
-		},
-		{
-			name: "REST error: fail-open returns true",
+			name: "REST error: returns error",
 			getFunc: func(path string, resp interface{}) error {
 				return errors.New("team not found")
 			},
-			org:   "test-org",
-			slug:  "backend",
-			login: "alice",
-			want:  true,
+			wantErr: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			client := NewClientWithDoers(nil, &mockRESTDoer{getFunc: tt.getFunc})
-			got := client.IsTeamMember(tt.org, tt.slug, tt.login)
-			if got != tt.want {
-				t.Errorf("IsTeamMember = %v, want %v", got, tt.want)
+			members, err := client.FetchTeamMembers("test-org", "backend")
+
+			if tt.wantErr {
+				if err == nil {
+					t.Error("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(members) != len(tt.want) {
+				t.Fatalf("got %d members, want %d", len(members), len(tt.want))
+			}
+			for i, m := range members {
+				if m.Login != tt.want[i].Login {
+					t.Errorf("members[%d].Login = %q, want %q", i, m.Login, tt.want[i].Login)
+				}
 			}
 		})
-	}
-}
-
-func TestIsTeamMemberCacheHit(t *testing.T) {
-	callCount := 0
-	getFunc := func(path string, resp interface{}) error {
-		callCount++
-		members := resp.(*[]teamMemberResponse)
-		*members = append(*members, teamMemberResponse{Login: "alice"})
-		return nil
-	}
-
-	client := NewClientWithDoers(nil, &mockRESTDoer{getFunc: getFunc})
-
-	// First call — cache miss, should fetch from REST.
-	got1 := client.IsTeamMember("test-org", "backend", "alice")
-	if !got1 {
-		t.Errorf("first call: IsTeamMember = false, want true")
-	}
-
-	// Second call with same org/slug — should use cache, not call REST again.
-	got2 := client.IsTeamMember("test-org", "backend", "alice")
-	if !got2 {
-		t.Errorf("second call: IsTeamMember = false, want true")
-	}
-
-	if callCount != 1 {
-		t.Errorf("REST called %d times, want 1 (cache should prevent second call)", callCount)
 	}
 }

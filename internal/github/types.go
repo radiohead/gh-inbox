@@ -14,3 +14,8 @@ type Repository struct {
 	Owner string `json:"owner"`
 	Name  string `json:"name"`
 }
+
+// TeamMember represents a member of a GitHub team.
+type TeamMember struct {
+	Login string `json:"login"`
+}

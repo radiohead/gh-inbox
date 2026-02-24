@@ -48,7 +48,7 @@ func teamReq(slug string, asCodeOwner bool) github.ReviewRequest {
 	}
 }
 
-func TestCodeOwners(t *testing.T) {
+func TestFilter(t *testing.T) {
 	alwaysMember := func(org, slug string) bool { return true }
 	neverMember := func(org, slug string) bool { return false }
 
@@ -59,10 +59,9 @@ func TestCodeOwners(t *testing.T) {
 		isMyTeam  IsMyTeamFunc
 		mode      Mode
 		wantCount int
-		wantNums  []int // PR numbers expected in output, in order
 	}{
 		{
-			name: "1: explicit request, default mode — show",
+			name: "1: explicit request, direct mode — show",
 			prs: []github.PullRequest{
 				buildPR("org/repo", []github.ReviewRequest{
 					userReq("alice", false),
@@ -70,24 +69,24 @@ func TestCodeOwners(t *testing.T) {
 			},
 			myLogin:   "alice",
 			isMyTeam:  neverMember,
-			mode:      ModeDefault,
+			mode:      ModeDirect,
 			wantCount: 1,
 		},
 		{
-			name: "2: codeowners-only with other reviewers, default — skip",
+			name: "2: codeowners-only with other reviewers, direct — skip",
 			prs: []github.PullRequest{
 				buildPR("org/repo", []github.ReviewRequest{
-					userReq("alice", true),   // my request, asCodeOwner=true
-					userReq("bob", false),    // other reviewer
+					userReq("alice", true), // my request, asCodeOwner=true
+					userReq("bob", false),  // other reviewer
 				}),
 			},
 			myLogin:   "alice",
 			isMyTeam:  neverMember,
-			mode:      ModeDefault,
+			mode:      ModeDirect,
 			wantCount: 0,
 		},
 		{
-			name: "3: codeowners-only, sole reviewer, default — show",
+			name: "3: codeowners-only, sole reviewer, direct — show",
 			prs: []github.PullRequest{
 				buildPR("org/repo", []github.ReviewRequest{
 					userReq("alice", true), // my request via codeowners, no others
@@ -95,7 +94,7 @@ func TestCodeOwners(t *testing.T) {
 			},
 			myLogin:   "alice",
 			isMyTeam:  neverMember,
-			mode:      ModeDefault,
+			mode:      ModeDirect,
 			wantCount: 1,
 		},
 		{
@@ -108,24 +107,24 @@ func TestCodeOwners(t *testing.T) {
 			},
 			myLogin:   "alice",
 			isMyTeam:  neverMember,
-			mode:      ModeDefault,
+			mode:      ModeDirect,
 			wantCount: 1,
 		},
 		{
-			name: "5: include-all shows everything",
+			name: "5: all mode shows everything",
 			prs: []github.PullRequest{
 				buildPR("org/repo", []github.ReviewRequest{
-					userReq("alice", true),  // my codeowner request
-					userReq("bob", false),   // other reviewer — default mode would skip
+					userReq("alice", true), // my codeowner request
+					userReq("bob", false),  // other reviewer — direct mode would skip
 				}),
 			},
 			myLogin:   "alice",
 			isMyTeam:  neverMember,
-			mode:      ModeIncludeAll,
+			mode:      ModeAll,
 			wantCount: 1,
 		},
 		{
-			name: "6: solo mode, sole codeowner — show",
+			name: "6: codeowner mode, sole codeowner — show",
 			prs: []github.PullRequest{
 				buildPR("org/repo", []github.ReviewRequest{
 					userReq("alice", true), // sole reviewer via codeowners
@@ -133,24 +132,24 @@ func TestCodeOwners(t *testing.T) {
 			},
 			myLogin:   "alice",
 			isMyTeam:  neverMember,
-			mode:      ModeSolo,
+			mode:      ModeCodeowner,
 			wantCount: 1,
 		},
 		{
-			name: "7: solo mode, codeowner with others — skip",
+			name: "7: codeowner mode, codeowner with others — skip",
 			prs: []github.PullRequest{
 				buildPR("org/repo", []github.ReviewRequest{
 					userReq("alice", true), // my codeowner request
-					userReq("bob", false),  // other reviewer — disqualifies solo mode
+					userReq("bob", false),  // other reviewer — disqualifies codeowner mode
 				}),
 			},
 			myLogin:   "alice",
 			isMyTeam:  neverMember,
-			mode:      ModeSolo,
+			mode:      ModeCodeowner,
 			wantCount: 0,
 		},
 		{
-			name: "8: solo mode, explicit request (not codeowner) — skip",
+			name: "8: codeowner mode, explicit request (not codeowner) — skip",
 			prs: []github.PullRequest{
 				buildPR("org/repo", []github.ReviewRequest{
 					userReq("alice", false), // explicit, not via codeowners
@@ -158,7 +157,7 @@ func TestCodeOwners(t *testing.T) {
 			},
 			myLogin:   "alice",
 			isMyTeam:  neverMember,
-			mode:      ModeSolo,
+			mode:      ModeCodeowner,
 			wantCount: 0,
 		},
 		{
@@ -170,7 +169,7 @@ func TestCodeOwners(t *testing.T) {
 			},
 			myLogin:   "alice",
 			isMyTeam:  alwaysMember,
-			mode:      ModeDefault,
+			mode:      ModeDirect,
 			wantCount: 1,
 		},
 		{
@@ -182,7 +181,7 @@ func TestCodeOwners(t *testing.T) {
 			},
 			myLogin:   "alice",
 			isMyTeam:  neverMember,
-			mode:      ModeDefault,
+			mode:      ModeDirect,
 			wantCount: 0,
 		},
 		{
@@ -192,16 +191,16 @@ func TestCodeOwners(t *testing.T) {
 			},
 			myLogin:   "alice",
 			isMyTeam:  neverMember,
-			mode:      ModeDefault,
+			mode:      ModeDirect,
 			wantCount: 0,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := CodeOwners(tt.prs, tt.myLogin, tt.isMyTeam, tt.mode)
+			got := Filter(tt.prs, tt.myLogin, tt.isMyTeam, tt.mode)
 			if len(got) != tt.wantCount {
-				t.Errorf("CodeOwners returned %d PRs, want %d", len(got), tt.wantCount)
+				t.Errorf("Filter returned %d PRs, want %d", len(got), tt.wantCount)
 			}
 		})
 	}

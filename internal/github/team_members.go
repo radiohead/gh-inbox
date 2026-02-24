@@ -1,14 +1,12 @@
 package github
 
-import "fmt"
+import (
+	"encoding/json"
+	"fmt"
+)
 
 // userResponse is the REST response for GET /user.
 type userResponse struct {
-	Login string `json:"login"`
-}
-
-// teamMemberResponse is a single entry in the REST response for GET /orgs/{org}/teams/{slug}/members.
-type teamMemberResponse struct {
 	Login string `json:"login"`
 }
 
@@ -21,37 +19,33 @@ func (c *Client) FetchCurrentUser() (string, error) {
 	return u.Login, nil
 }
 
-// IsTeamMember reports whether login is a member of the given org/slug team.
-// Results are lazily cached per team (org+slug key). On REST error the function
-// returns true (fail-open) to avoid hiding PRs due to transient API failures.
-func (c *Client) IsTeamMember(org, slug, login string) bool {
-	if c.teamMembers == nil {
-		c.teamMembers = make(map[string]map[string]bool)
+// FetchTeamMembers retrieves all members of the given org/slug team via REST.
+// If a Cacher is configured on the Client, results are read from and written
+// to the cache to avoid redundant API calls.
+func (c *Client) FetchTeamMembers(org, slug string) ([]TeamMember, error) {
+	cacheKey := "team:" + org + "/" + slug
+
+	if c.cache != nil {
+		data, found, err := c.cache.Get(cacheKey)
+		if err == nil && found {
+			var cached []TeamMember
+			if jsonErr := json.Unmarshal(data, &cached); jsonErr == nil {
+				return cached, nil
+			}
+		}
 	}
 
-	key := org + "/" + slug
-	if _, cached := c.teamMembers[key]; !cached {
-		members, err := c.fetchTeamMembers(org, slug)
-		if err != nil {
-			// Fail-open: treat user as member to avoid hiding PRs.
-			return true
-		}
-		set := make(map[string]bool, len(members))
-		for _, m := range members {
-			set[m.Login] = true
-		}
-		c.teamMembers[key] = set
-	}
-
-	return c.teamMembers[key][login]
-}
-
-// fetchTeamMembers retrieves all members of the given org/slug team via REST.
-func (c *Client) fetchTeamMembers(org, slug string) ([]teamMemberResponse, error) {
-	var members []teamMemberResponse
+	var members []TeamMember
 	path := fmt.Sprintf("orgs/%s/teams/%s/members?per_page=100", org, slug)
 	if err := c.rest.Get(path, &members); err != nil {
 		return nil, fmt.Errorf("fetching team members for %s/%s: %w", org, slug, err)
 	}
+
+	if c.cache != nil {
+		if data, err := json.Marshal(members); err == nil {
+			_ = c.cache.Set(cacheKey, data)
+		}
+	}
+
 	return members, nil
 }

@@ -6,10 +6,10 @@ gh-inbox fetches GitHub data via GraphQL and REST APIs, filters it with
 client-side logic, and renders results as a human-friendly table or JSON.
 
 ```
-  ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
-  │  GitHub API  │────>│  github/     │────>│   output/    │
-  │  GraphQL/REST│     │  fetch+filter│     │  table / JSON│
-  └──────────────┘     └──────────────┘     └──────────────┘
+  ┌──────────────┐     ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
+  │  GitHub API  │────>│  github/     │────>│  filter/ +   │────>│   output/    │
+  │  GraphQL/REST│     │  fetch data  │     │  service/    │     │  table / JSON│
+  └──────────────┘     └──────────────┘     └──────────────┘     └──────────────┘
 ```
 
 ## Package Responsibilities
@@ -17,7 +17,17 @@ client-side logic, and renders results as a human-friendly table or JSON.
 ### `cmd/`
 
 CLI entry point. Parses subcommands (`prs`, `issues`, `discussions`) and
-flags (`--review`, `--authored`, `--json`), then wires fetch + output.
+flags, then wires fetch + filter + output.
+
+```
+cmd/
+  root.go         → root command, registers subcommands
+  prs/
+    prs.go        → "prs" parent command, exports Cmd
+    review.go     → "prs review" subcommand with --org + --filter
+    authored.go   → "prs authored" subcommand (placeholder)
+    review_test.go
+```
 
 ### `github/`
 
@@ -25,12 +35,24 @@ All API interaction. Key files:
 
 | File | Responsibility | Status |
 |------|----------------|--------|
-| `client.go` | `graphQLDoer`/`restDoer` interfaces, `Client` struct, `NewClient()` / `NewClientWithDoer()` / `NewClientWithDoers()` | ✅ implemented |
+| `client.go` | `graphQLDoer`/`restDoer`/`Cacher` interfaces, `Client` struct, constructors | ✅ implemented |
 | `queries.go` | GraphQL query structs + `buildReviewRequestedSearchQuery()` | ✅ implemented |
 | `prs.go` | `FetchReviewRequestedPRs()`, `convertSearchPRNode()` | ✅ implemented |
-| `team_members.go` | `FetchCurrentUser()`, `IsTeamMember()` with lazy REST cache | ✅ implemented |
+| `team_members.go` | `FetchCurrentUser()`, `FetchTeamMembers()` with optional `Cacher` wiring | ✅ implemented |
+| `types.go` | Shared public types: `PullRequest`, `Repository`, `TeamMember` | ✅ implemented |
 | `issues.go` | Issue fetching + mention-response detection | planned |
 | `discussions.go` | Discussion fetching + unanswered-reply detection | planned |
+
+### `service/`
+
+Business logic layer, independent of API and rendering details.
+
+| File | Responsibility | Status |
+|------|----------------|--------|
+| `team.go` | `TeamService` — lazy in-process team membership cache with fail-open semantics | ✅ implemented |
+
+`TeamService` accepts a `TeamMemberFetcher` interface, which `github.Client`
+satisfies implicitly. This decouples the cache logic from the HTTP layer.
 
 ### `filter/`
 
@@ -38,7 +60,15 @@ Client-side filtering logic, independent of API details.
 
 | File | Responsibility | Status |
 |------|----------------|--------|
-| `codeowners.go` | `CodeOwners()` — filters PRs by CODEOWNERS mode (Default/IncludeAll/Solo) | ✅ implemented |
+| `filter.go` | Top-level `Filter()` dispatcher + `FilterDirect()` + `FilterCodeowner()` | ✅ implemented |
+
+**Modes:**
+
+| Mode | Behavior |
+|------|----------|
+| `ModeAll` | No filtering — all PRs shown |
+| `ModeDirect` | Hide PRs where my requests are CODEOWNERS-only and others are assigned |
+| `ModeCodeowner` | Show only PRs where I'm the sole CODEOWNERS reviewer |
 
 ### `output/`
 
