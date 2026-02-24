@@ -53,9 +53,10 @@ func convertSearchPRNode(n searchPRNode) PullRequest {
 
 	owner, name := splitNameWithOwner(n.Repository.NameWithOwner)
 	return PullRequest{
-		Number: n.Number,
-		Title:  n.Title,
-		URL:    n.URL,
+		Number:    n.Number,
+		Title:     n.Title,
+		URL:       n.URL,
+		CreatedAt: n.CreatedAt,
 		Repository: Repository{
 			Owner: owner,
 			Name:  name,

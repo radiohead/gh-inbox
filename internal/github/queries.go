@@ -1,6 +1,9 @@
 package github
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
 
 // searchReviewRequestedQuery is the GraphQL query struct for fetching PRs
 // where review has been requested from the current user.
@@ -15,9 +18,10 @@ type searchReviewRequestedQuery struct {
 
 // searchPRNode represents a pull request node returned in search results.
 type searchPRNode struct {
-	Number     int
-	Title      string
-	URL        string
+	Number    int
+	Title     string
+	URL       string
+	CreatedAt time.Time
 	Repository struct {
 		NameWithOwner string
 	}

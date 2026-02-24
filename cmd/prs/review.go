@@ -49,7 +49,14 @@ var reviewCmd = &cobra.Command{
 			prs = filter.Filter(prs, login, isMyTeam, mode)
 		}
 
-		return output.WriteJSON(cmd.OutOrStdout(), prs)
+		switch outputFormat {
+		case "json":
+			return output.WriteJSON(cmd.OutOrStdout(), prs)
+		case "table", "":
+			return output.WriteTable(cmd.OutOrStdout(), prs)
+		default:
+			return fmt.Errorf("unknown output format %q: must be table or json", outputFormat)
+		}
 	},
 }
 
