@@ -4,6 +4,8 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+
+	"github.com/radiohead/gh-inbox/cmd/prs"
 )
 
 var rootCmd = &cobra.Command{
@@ -20,5 +22,5 @@ func Execute() {
 }
 
 func init() {
-	rootCmd.AddCommand(prsCmd)
+	rootCmd.AddCommand(prs.Cmd)
 }

@@ -47,14 +47,13 @@ No registry or approval process. The workflow:
 A gh CLI extension that shows your GitHub action items across PRs, Issues, and Discussions.
 
 ```
-gh inbox                    # show all action items (table)
-gh inbox prs                # PRs only
-gh inbox prs --review       # PRs awaiting my review
-gh inbox prs --authored     # my PRs needing attention
-gh inbox issues             # issues needing action
-gh inbox discussions        # discussions needing response
-gh inbox --json             # machine-readable output
-gh inbox --json | jq '...'  # composable with jq
+gh inbox                          # show all action items (table)
+gh inbox prs review --org grafana # PRs awaiting my review
+gh inbox prs review --org grafana --filter direct    # hide CODEOWNERS noise
+gh inbox prs review --org grafana --filter codeowner # CODEOWNERS-only PRs
+gh inbox prs authored             # my PRs needing attention
+gh inbox issues                   # issues needing action
+gh inbox discussions              # discussions needing response
 ```
 
 ### Output formats (by priority)
@@ -77,14 +76,14 @@ username: radiohead    # auto-detected from gh auth status
 
 ## Feature Breakdown
 
-### a) PRs Awaiting My Review (`gh inbox prs --review`)
+### a) PRs Awaiting My Review (`gh inbox prs review`)
 
 **Logic**:
 1. Query: `is:open is:pr review-requested:@me org:{org}` via GraphQL search
 2. For each PR, fetch `reviewRequests` with `asCodeOwner` field
-3. **Default**: exclude PRs where my assignment is ONLY via CODEOWNERS AND there are other reviewers
-4. **`--include-codeowners`**: show all, with a column indicating assignment source
-5. **`--codeowners-solo`**: show CODEOWNERS PRs where I'm the sole reviewer
+3. **`--filter all`** (default): no filtering, show all PRs
+4. **`--filter direct`**: exclude PRs where my assignment is ONLY via CODEOWNERS AND there are other reviewers
+5. **`--filter codeowner`**: show only CODEOWNERS PRs where I'm the sole reviewer
 
 **Key verified GraphQL query** (tested live against grafana org):
 ```graphql
@@ -121,7 +120,7 @@ for each PR:
     SHOW    # at least one explicit request for me
 ```
 
-### b) My PRs Needing Attention (`gh inbox prs --authored`)
+### b) My PRs Needing Attention (`gh inbox prs authored`)
 
 **Logic**:
 1. Query: `is:open is:pr author:@me org:{org}`
@@ -163,19 +162,25 @@ gh-inbox (Go binary)
   |
   +-- config.go          # load ~/.config/gh-inbox/config.yml
   +-- github/
-  |     +-- client.go    # GraphQL + REST client (uses gh auth token)
+  |     +-- client.go    # GraphQL + REST + Cacher interfaces, Client struct
   |     +-- queries.go   # all GraphQL query strings
-  |     +-- prs.go       # PR fetching + CODEOWNERS filtering logic
+  |     +-- prs.go       # PR fetching
+  |     +-- team_members.go  # FetchCurrentUser, FetchTeamMembers (+ Cacher wiring)
   |     +-- issues.go    # issue fetching + mention-response detection
   |     +-- discussions.go
+  +-- service/
+  |     +-- team.go      # TeamService — in-process membership cache, fail-open
+  +-- filter/
+  |     +-- filter.go    # Filter dispatcher + FilterDirect + FilterCodeowner
   +-- output/
   |     +-- table.go     # human-friendly table output
   |     +-- json.go      # machine-readable JSON output
   +-- cmd/
-        +-- root.go      # `gh inbox` - show all
-        +-- prs.go       # `gh inbox prs` subcommand
-        +-- issues.go    # `gh inbox issues` subcommand
-        +-- discussions.go
+        +-- root.go      # `gh inbox` root command
+        +-- prs/
+              +-- prs.go     # `prs` parent command, exports Cmd
+              +-- review.go  # `prs review` subcommand, --org + --filter
+              +-- authored.go# `prs authored` subcommand (placeholder)
 ```
 
 **Auth**: Delegates to `gh auth token` - no separate auth config needed.
