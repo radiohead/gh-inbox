@@ -1,19 +1,24 @@
 package filter
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/radiohead/gh-inbox/internal/github"
 )
 
 // buildPR constructs a PullRequest for testing with the given review requests.
+// nameWithOwner should be in "owner/repo" format.
 func buildPR(nameWithOwner string, requests []github.ReviewRequest) github.PullRequest {
+	parts := strings.SplitN(nameWithOwner, "/", 2)
+	owner, name := parts[0], parts[1]
 	return github.PullRequest{
 		Number: 1,
 		Title:  "Test PR",
 		URL:    "https://github.com/" + nameWithOwner + "/pull/1",
 		Repository: github.Repository{
-			NameWithOwner: nameWithOwner,
+			Owner: owner,
+			Name:  name,
 		},
 		ReviewRequests: github.ReviewRequestConnection{
 			Nodes: requests,

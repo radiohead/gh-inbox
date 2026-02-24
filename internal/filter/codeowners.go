@@ -1,8 +1,6 @@
 package filter
 
 import (
-	"strings"
-
 	"github.com/radiohead/gh-inbox/internal/github"
 )
 
@@ -30,7 +28,7 @@ type IsMyTeamFunc func(org, slug string) bool
 // CodeOwners filters prs according to CODEOWNERS membership logic.
 //
 // Algorithm per PR:
-//  1. Extract org from PR.Repository.NameWithOwner (split on "/").
+//  1. Use PR.Repository.Owner as the org.
 //  2. Classify each review request as "mine" or "other":
 //     - "mine" if Type=="User" and Login==myLogin
 //     - "mine" if Type=="Team" and isMyTeam(org, Login) returns true
@@ -55,12 +53,7 @@ func CodeOwners(prs []github.PullRequest, myLogin string, isMyTeam IsMyTeamFunc,
 }
 
 func includePR(pr github.PullRequest, myLogin string, isMyTeam IsMyTeamFunc, mode Mode) bool {
-	// Extract org from "org/repo".
-	parts := strings.SplitN(pr.Repository.NameWithOwner, "/", 2)
-	org := ""
-	if len(parts) == 2 {
-		org = parts[0]
-	}
+	org := pr.Repository.Owner
 
 	// If include-all mode, show everything.
 	if mode == ModeIncludeAll {
