@@ -25,6 +25,7 @@ func TestWriteTable_tabSeparated(t *testing.T) {
 		{
 			Number:    42,
 			Title:     "Fix the bug",
+			URL:       "https://github.com/acme/api/pull/42",
 			CreatedAt: now.Add(-2 * 24 * time.Hour),
 			Repository: github.Repository{Owner: "acme", Name: "api"},
 			ReviewRequests: github.ReviewRequestConnection{
@@ -51,12 +52,37 @@ func TestWriteTable_tabSeparated(t *testing.T) {
 	if !strings.Contains(out, "Fix the bug") {
 		t.Errorf("expected title in output, got: %q", out)
 	}
+	if !strings.Contains(out, "https://github.com/acme/api/pull/42") {
+		t.Errorf("expected URL in output, got: %q", out)
+	}
 	if !strings.Contains(out, "direct") {
 		t.Errorf("expected source=direct in output, got: %q", out)
 	}
 	// Age should be "2d"
 	if !strings.Contains(out, "2d") {
 		t.Errorf("expected age=2d in output, got: %q", out)
+	}
+}
+
+func TestWriteTable_sortsByAgeOldestFirst(t *testing.T) {
+	now := time.Now()
+	prs := []github.PullRequest{
+		{Number: 1, Title: "newest", URL: "https://github.com/acme/api/pull/1", CreatedAt: now.Add(-1 * 24 * time.Hour), Repository: github.Repository{Owner: "acme", Name: "api"}},
+		{Number: 3, Title: "oldest", URL: "https://github.com/acme/api/pull/3", CreatedAt: now.Add(-10 * 24 * time.Hour), Repository: github.Repository{Owner: "acme", Name: "api"}},
+		{Number: 2, Title: "middle", URL: "https://github.com/acme/api/pull/2", CreatedAt: now.Add(-5 * 24 * time.Hour), Repository: github.Repository{Owner: "acme", Name: "api"}},
+	}
+
+	var buf bytes.Buffer
+	if err := WriteTable(&buf, prs); err != nil {
+		t.Fatalf("WriteTable unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	oldestPos := strings.Index(out, "oldest")
+	middlePos := strings.Index(out, "middle")
+	newestPos := strings.Index(out, "newest")
+	if !(oldestPos < middlePos && middlePos < newestPos) {
+		t.Errorf("expected oldest < middle < newest in output, got positions: oldest=%d middle=%d newest=%d\noutput: %q", oldestPos, middlePos, newestPos, out)
 	}
 }
 

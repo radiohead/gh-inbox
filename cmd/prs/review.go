@@ -14,7 +14,6 @@ import (
 type reviewOptions struct {
 	org        string
 	filterMode string
-	jsonOutput bool
 }
 
 var reviewOpts reviewOptions
@@ -50,10 +49,14 @@ var reviewCmd = &cobra.Command{
 			prs = filter.Filter(prs, login, isMyTeam, mode)
 		}
 
-		if reviewOpts.jsonOutput {
+		switch outputFormat {
+		case "json":
 			return output.WriteJSON(cmd.OutOrStdout(), prs)
+		case "table", "":
+			return output.WriteTable(cmd.OutOrStdout(), prs)
+		default:
+			return fmt.Errorf("unknown output format %q: must be table or json", outputFormat)
 		}
-		return output.WriteTable(cmd.OutOrStdout(), prs)
 	},
 }
 
@@ -61,7 +64,6 @@ func init() {
 	reviewCmd.Flags().StringVar(&reviewOpts.org, "org", "", "GitHub organization to query (required)")
 	_ = reviewCmd.MarkFlagRequired("org")
 	reviewCmd.Flags().StringVar(&reviewOpts.filterMode, "filter", "all", "Filter mode: all|direct|codeowner")
-	reviewCmd.Flags().BoolVar(&reviewOpts.jsonOutput, "json", false, "Output as JSON instead of table")
 }
 
 // parseFilterMode converts a filter flag string to a filter.Mode.

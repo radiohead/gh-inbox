@@ -3,6 +3,7 @@ package output
 import (
 	"fmt"
 	"io"
+	"sort"
 	"time"
 
 	"github.com/cli/go-gh/v2/pkg/tableprinter"
@@ -28,8 +29,12 @@ func WriteTable(w io.Writer, prs []github.PullRequest) error {
 		width = 120
 	}
 
+	sort.SliceStable(prs, func(i, j int) bool {
+		return prs[i].CreatedAt.Before(prs[j].CreatedAt)
+	})
+
 	tp := tableprinter.New(w, isTTY, width)
-	tp.AddHeader([]string{"REPO", "PR", "TITLE", "SOURCE", "AGE"})
+	tp.AddHeader([]string{"REPO", "PR", "TITLE", "URL", "SOURCE", "AGE"})
 
 	for _, pr := range prs {
 		repo := pr.Repository.Owner + "/" + pr.Repository.Name
@@ -40,6 +45,7 @@ func WriteTable(w io.Writer, prs []github.PullRequest) error {
 		tp.AddField(repo)
 		tp.AddField(prNum)
 		tp.AddField(pr.Title)
+		tp.AddField(pr.URL)
 		tp.AddField(source, tableprinter.WithColor(sourceColor(source)))
 		tp.AddField(age)
 		tp.EndRow()
