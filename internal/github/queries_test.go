@@ -9,6 +9,11 @@ func TestBuildReviewRequestedSearchQuery(t *testing.T) {
 		want string
 	}{
 		{
+			name: "no org — all orgs",
+			org:  "",
+			want: "is:open is:pr review-requested:@me",
+		},
+		{
 			name: "simple org name",
 			org:  "grafana",
 			want: "is:open is:pr review-requested:@me org:grafana",

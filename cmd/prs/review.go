@@ -61,8 +61,7 @@ var reviewCmd = &cobra.Command{
 }
 
 func init() {
-	reviewCmd.Flags().StringVar(&reviewOpts.org, "org", "", "GitHub organization to query (required)")
-	_ = reviewCmd.MarkFlagRequired("org")
+	reviewCmd.Flags().StringVar(&reviewOpts.org, "org", "", "GitHub organization to filter by (default: all orgs)")
 	reviewCmd.Flags().StringVar(&reviewOpts.filterMode, "filter", "all", "Filter mode: all|direct|codeowner")
 }
 

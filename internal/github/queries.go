@@ -1,7 +1,6 @@
 package github
 
 import (
-	"fmt"
 	"time"
 )
 
@@ -46,8 +45,12 @@ type searchReviewRequestNode struct {
 }
 
 // buildReviewRequestedSearchQuery returns a GitHub search query string that
-// finds open PRs where review has been requested from the current user in
-// the given organization.
+// finds open PRs where review has been requested from the current user.
+// If org is non-empty, results are filtered to that organization.
 func buildReviewRequestedSearchQuery(org string) string {
-	return fmt.Sprintf("is:open is:pr review-requested:@me org:%s", org)
+	q := "is:open is:pr review-requested:@me"
+	if org != "" {
+		q += " org:" + org
+	}
+	return q
 }
