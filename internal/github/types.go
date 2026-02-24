@@ -1,10 +1,13 @@
 package github
 
+import "time"
+
 // PullRequest represents a GitHub pull request with review request information.
 type PullRequest struct {
 	Number         int                     `json:"number"`
 	Title          string                  `json:"title"`
 	URL            string                  `json:"url"`
+	CreatedAt      time.Time               `json:"createdAt"`
 	Repository     Repository              `json:"repository"`
 	ReviewRequests ReviewRequestConnection `json:"reviewRequests"`
 }
