@@ -77,7 +77,7 @@ func TestFetchReviewRequestedPRs(t *testing.T) {
 					Number: 101,
 					Title:  "Add feature",
 					URL:    "https://github.com/test-org/repo/pull/101",
-					Repository: Repository{NameWithOwner: "test-org/repo"},
+					Repository: Repository{Owner: "test-org", Name: "repo"},
 					ReviewRequests: ReviewRequestConnection{
 						Nodes: []ReviewRequest{
 							{AsCodeOwner: false, RequestedReviewer: RequestedReviewer{Type: "User", Login: "alice"}},
@@ -148,7 +148,7 @@ func TestFetchReviewRequestedPRs(t *testing.T) {
 					Number:     202,
 					Title:      "Update docs",
 					URL:        "https://github.com/test-org/repo/pull/202",
-					Repository: Repository{NameWithOwner: "test-org/repo"},
+					Repository: Repository{Owner: "test-org", Name: "repo"},
 					ReviewRequests: ReviewRequestConnection{
 						Nodes: []ReviewRequest{
 							{AsCodeOwner: true, RequestedReviewer: RequestedReviewer{Type: "User", Login: "bob"}},
@@ -205,8 +205,8 @@ func TestFetchReviewRequestedPRs(t *testing.T) {
 				if pr.URL != w.URL {
 					t.Errorf("[%d] URL = %q, want %q", i, pr.URL, w.URL)
 				}
-				if pr.Repository.NameWithOwner != w.Repository.NameWithOwner {
-					t.Errorf("[%d] Repo = %q, want %q", i, pr.Repository.NameWithOwner, w.Repository.NameWithOwner)
+				if pr.Repository != w.Repository {
+					t.Errorf("[%d] Repo = %+v, want %+v", i, pr.Repository, w.Repository)
 				}
 				if len(pr.ReviewRequests.Nodes) != len(w.ReviewRequests.Nodes) {
 					t.Fatalf("[%d] ReviewRequests len = %d, want %d", i, len(pr.ReviewRequests.Nodes), len(w.ReviewRequests.Nodes))

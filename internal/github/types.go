@@ -11,5 +11,6 @@ type PullRequest struct {
 
 // Repository identifies the repository a PR belongs to.
 type Repository struct {
-	NameWithOwner string `json:"nameWithOwner"`
+	Owner string `json:"owner"`
+	Name  string `json:"name"`
 }

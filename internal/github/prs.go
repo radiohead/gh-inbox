@@ -1,5 +1,7 @@
 package github
 
+import "strings"
+
 // FetchReviewRequestedPRs fetches open PRs in org where review has been
 // requested from the current user, returning unfiltered results.
 func (c *Client) FetchReviewRequestedPRs(org string) ([]PullRequest, error) {
@@ -45,15 +47,26 @@ func convertSearchPRNode(n searchPRNode) PullRequest {
 		})
 	}
 
+	owner, name := splitNameWithOwner(n.Repository.NameWithOwner)
 	return PullRequest{
 		Number: n.Number,
 		Title:  n.Title,
 		URL:    n.URL,
 		Repository: Repository{
-			NameWithOwner: n.Repository.NameWithOwner,
+			Owner: owner,
+			Name:  name,
 		},
 		ReviewRequests: ReviewRequestConnection{
 			Nodes: requests,
 		},
 	}
+}
+
+// splitNameWithOwner splits a GitHub "owner/name" string into its two parts.
+func splitNameWithOwner(nameWithOwner string) (owner, name string) {
+	parts := strings.SplitN(nameWithOwner, "/", 2)
+	if len(parts) == 2 {
+		return parts[0], parts[1]
+	}
+	return nameWithOwner, ""
 }

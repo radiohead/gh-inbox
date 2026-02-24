@@ -17,14 +17,14 @@ func TestPullRequestUnmarshal(t *testing.T) {
 				"number": 42,
 				"title": "Fix bug",
 				"url": "https://github.com/org/repo/pull/42",
-				"repository": {"nameWithOwner": "org/repo"},
+				"repository": {"owner": "org", "name": "repo"},
 				"reviewRequests": {"nodes": []}
 			}`,
 			want: PullRequest{
 				Number:         42,
 				Title:          "Fix bug",
 				URL:            "https://github.com/org/repo/pull/42",
-				Repository:     Repository{NameWithOwner: "org/repo"},
+				Repository:     Repository{Owner: "org", Name: "repo"},
 				ReviewRequests: ReviewRequestConnection{Nodes: []ReviewRequest{}},
 			},
 		},
@@ -34,7 +34,7 @@ func TestPullRequestUnmarshal(t *testing.T) {
 				"number": 1,
 				"title": "Add feature",
 				"url": "https://github.com/org/repo/pull/1",
-				"repository": {"nameWithOwner": "org/repo"},
+				"repository": {"owner": "org", "name": "repo"},
 				"reviewRequests": {
 					"nodes": [
 						{
@@ -48,7 +48,7 @@ func TestPullRequestUnmarshal(t *testing.T) {
 				Number:     1,
 				Title:      "Add feature",
 				URL:        "https://github.com/org/repo/pull/1",
-				Repository: Repository{NameWithOwner: "org/repo"},
+				Repository: Repository{Owner: "org", Name: "repo"},
 				ReviewRequests: ReviewRequestConnection{
 					Nodes: []ReviewRequest{
 						{
@@ -65,7 +65,7 @@ func TestPullRequestUnmarshal(t *testing.T) {
 				"number": 2,
 				"title": "Update docs",
 				"url": "https://github.com/org/repo/pull/2",
-				"repository": {"nameWithOwner": "org/repo"},
+				"repository": {"owner": "org", "name": "repo"},
 				"reviewRequests": {
 					"nodes": [
 						{
@@ -79,7 +79,7 @@ func TestPullRequestUnmarshal(t *testing.T) {
 				Number:     2,
 				Title:      "Update docs",
 				URL:        "https://github.com/org/repo/pull/2",
-				Repository: Repository{NameWithOwner: "org/repo"},
+				Repository: Repository{Owner: "org", Name: "repo"},
 				ReviewRequests: ReviewRequestConnection{
 					Nodes: []ReviewRequest{
 						{
@@ -96,7 +96,7 @@ func TestPullRequestUnmarshal(t *testing.T) {
 				"number": 3,
 				"title": "Refactor",
 				"url": "https://github.com/org/repo/pull/3",
-				"repository": {"nameWithOwner": "org/repo"},
+				"repository": {"owner": "org", "name": "repo"},
 				"reviewRequests": {
 					"nodes": [
 						{
@@ -110,7 +110,7 @@ func TestPullRequestUnmarshal(t *testing.T) {
 				Number:     3,
 				Title:      "Refactor",
 				URL:        "https://github.com/org/repo/pull/3",
-				Repository: Repository{NameWithOwner: "org/repo"},
+				Repository: Repository{Owner: "org", Name: "repo"},
 				ReviewRequests: ReviewRequestConnection{
 					Nodes: []ReviewRequest{
 						{
@@ -138,8 +138,8 @@ func TestPullRequestUnmarshal(t *testing.T) {
 			if got.URL != tt.want.URL {
 				t.Errorf("URL = %q, want %q", got.URL, tt.want.URL)
 			}
-			if got.Repository.NameWithOwner != tt.want.Repository.NameWithOwner {
-				t.Errorf("Repository.NameWithOwner = %q, want %q", got.Repository.NameWithOwner, tt.want.Repository.NameWithOwner)
+			if got.Repository != tt.want.Repository {
+				t.Errorf("Repository = %+v, want %+v", got.Repository, tt.want.Repository)
 			}
 			if len(got.ReviewRequests.Nodes) != len(tt.want.ReviewRequests.Nodes) {
 				t.Fatalf("ReviewRequests len = %d, want %d", len(got.ReviewRequests.Nodes), len(tt.want.ReviewRequests.Nodes))
