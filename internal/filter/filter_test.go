@@ -86,7 +86,7 @@ func TestFilter(t *testing.T) {
 			wantCount: 0,
 		},
 		{
-			name: "3: codeowners-only, sole reviewer, direct — show",
+			name: "3: codeowners-only, sole reviewer, direct — skip",
 			prs: []github.PullRequest{
 				buildPR("org/repo", []github.ReviewRequest{
 					userReq("alice", true), // my request via codeowners, no others
@@ -95,7 +95,7 @@ func TestFilter(t *testing.T) {
 			myLogin:   "alice",
 			isMyTeam:  neverMember,
 			mode:      ModeDirect,
-			wantCount: 1,
+			wantCount: 0,
 		},
 		{
 			name: "4: mixed explicit + codeowner — show",
@@ -136,17 +136,17 @@ func TestFilter(t *testing.T) {
 			wantCount: 1,
 		},
 		{
-			name: "7: codeowner mode, codeowner with others — skip",
+			name: "7: codeowner mode, codeowner with others — show",
 			prs: []github.PullRequest{
 				buildPR("org/repo", []github.ReviewRequest{
 					userReq("alice", true), // my codeowner request
-					userReq("bob", false),  // other reviewer — disqualifies codeowner mode
+					userReq("bob", false),  // other reviewer — no longer disqualifies codeowner mode
 				}),
 			},
 			myLogin:   "alice",
 			isMyTeam:  neverMember,
 			mode:      ModeCodeowner,
-			wantCount: 0,
+			wantCount: 1,
 		},
 		{
 			name: "8: codeowner mode, explicit request (not codeowner) — skip",
@@ -192,6 +192,85 @@ func TestFilter(t *testing.T) {
 			myLogin:   "alice",
 			isMyTeam:  neverMember,
 			mode:      ModeDirect,
+			wantCount: 0,
+		},
+		// Mutual exclusivity: sole codeowner
+		{
+			name: "12: mutual exclusivity — sole codeowner: direct=0",
+			prs: []github.PullRequest{
+				buildPR("org/repo", []github.ReviewRequest{
+					userReq("alice", true),
+				}),
+			},
+			myLogin:   "alice",
+			isMyTeam:  neverMember,
+			mode:      ModeDirect,
+			wantCount: 0,
+		},
+		{
+			name: "13: mutual exclusivity — sole codeowner: codeowner=1",
+			prs: []github.PullRequest{
+				buildPR("org/repo", []github.ReviewRequest{
+					userReq("alice", true),
+				}),
+			},
+			myLogin:   "alice",
+			isMyTeam:  neverMember,
+			mode:      ModeCodeowner,
+			wantCount: 1,
+		},
+		// Mutual exclusivity: codeowner with other reviewers
+		{
+			name: "14: mutual exclusivity — codeowner with others: direct=0",
+			prs: []github.PullRequest{
+				buildPR("org/repo", []github.ReviewRequest{
+					userReq("alice", true),
+					userReq("bob", false),
+				}),
+			},
+			myLogin:   "alice",
+			isMyTeam:  neverMember,
+			mode:      ModeDirect,
+			wantCount: 0,
+		},
+		{
+			name: "15: mutual exclusivity — codeowner with others: codeowner=1",
+			prs: []github.PullRequest{
+				buildPR("org/repo", []github.ReviewRequest{
+					userReq("alice", true),
+					userReq("bob", false),
+				}),
+			},
+			myLogin:   "alice",
+			isMyTeam:  neverMember,
+			mode:      ModeCodeowner,
+			wantCount: 1,
+		},
+		// Mutual exclusivity: mixed (explicit + codeowner) requests
+		{
+			name: "16: mutual exclusivity — mixed requests: direct=1",
+			prs: []github.PullRequest{
+				buildPR("org/repo", []github.ReviewRequest{
+					userReq("alice", false),
+					userReq("alice", true),
+				}),
+			},
+			myLogin:   "alice",
+			isMyTeam:  neverMember,
+			mode:      ModeDirect,
+			wantCount: 1,
+		},
+		{
+			name: "17: mutual exclusivity — mixed requests: codeowner=0",
+			prs: []github.PullRequest{
+				buildPR("org/repo", []github.ReviewRequest{
+					userReq("alice", false),
+					userReq("alice", true),
+				}),
+			},
+			myLogin:   "alice",
+			isMyTeam:  neverMember,
+			mode:      ModeCodeowner,
 			wantCount: 0,
 		},
 	}

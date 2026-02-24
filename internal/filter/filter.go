@@ -12,12 +12,12 @@ const (
 	// how the review was requested.
 	ModeAll Mode = iota
 
-	// ModeDirect hides PRs where all my review requests come solely from
-	// CODEOWNERS and there are other explicit human reviewers on the PR.
+	// ModeDirect shows only PRs where at least one of my review requests is NOT
+	// from CODEOWNERS (I was explicitly requested as a reviewer).
 	ModeDirect
 
-	// ModeCodeowner shows only PRs where I'm the sole reviewer via CODEOWNERS
-	// (useful for batch-approving low-noise code changes).
+	// ModeCodeowner shows only PRs where ALL my review requests come from
+	// CODEOWNERS (none were explicitly requested), regardless of other reviewers.
 	ModeCodeowner
 )
 
@@ -40,8 +40,8 @@ func Filter(prs []github.PullRequest, myLogin string, isMyTeam IsMyTeamFunc, mod
 	}
 }
 
-// FilterDirect hides PRs where all my review requests come solely from
-// CODEOWNERS and there are other explicit human reviewers on the PR.
+// FilterDirect shows only PRs where at least one of my review requests is NOT
+// from CODEOWNERS (I was explicitly requested as a reviewer).
 func FilterDirect(prs []github.PullRequest, myLogin string, isMyTeam IsMyTeamFunc) []github.PullRequest {
 	result := make([]github.PullRequest, 0, len(prs))
 	for _, pr := range prs {
@@ -49,15 +49,15 @@ func FilterDirect(prs []github.PullRequest, myLogin string, isMyTeam IsMyTeamFun
 		if len(rc.mineCodeOwner) == 0 {
 			continue
 		}
-		if allTrue(rc.mineCodeOwner) && rc.otherCount > 0 {
-			continue
+		if !allTrue(rc.mineCodeOwner) {
+			result = append(result, pr)
 		}
-		result = append(result, pr)
 	}
 	return result
 }
 
-// FilterCodeowner shows only PRs where I'm the sole reviewer via CODEOWNERS.
+// FilterCodeowner shows only PRs where ALL my review requests come from
+// CODEOWNERS (none were explicitly requested), regardless of other reviewers.
 func FilterCodeowner(prs []github.PullRequest, myLogin string, isMyTeam IsMyTeamFunc) []github.PullRequest {
 	result := make([]github.PullRequest, 0, len(prs))
 	for _, pr := range prs {
@@ -65,7 +65,7 @@ func FilterCodeowner(prs []github.PullRequest, myLogin string, isMyTeam IsMyTeam
 		if len(rc.mineCodeOwner) == 0 {
 			continue
 		}
-		if allTrue(rc.mineCodeOwner) && rc.otherCount == 0 {
+		if allTrue(rc.mineCodeOwner) {
 			result = append(result, pr)
 		}
 	}
