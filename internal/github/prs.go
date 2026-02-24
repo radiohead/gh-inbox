@@ -1,14 +1,18 @@
 package github
 
-import "strings"
+import (
+	"strings"
+
+	graphql "github.com/cli/shurcooL-graphql"
+)
 
 // FetchReviewRequestedPRs fetches open PRs in org where review has been
 // requested from the current user, returning unfiltered results.
 func (c *Client) FetchReviewRequestedPRs(org string) ([]PullRequest, error) {
 	var q searchReviewRequestedQuery
 	variables := map[string]interface{}{
-		"query": buildReviewRequestedSearchQuery(org),
-		"first": 50,
+		"query": graphql.String(buildReviewRequestedSearchQuery(org)),
+		"first": graphql.Int(50),
 	}
 	if err := c.gql.Query("SearchReviewRequestedPRs", &q, variables); err != nil {
 		return nil, err

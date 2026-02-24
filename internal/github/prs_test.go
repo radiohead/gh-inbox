@@ -3,6 +3,8 @@ package github
 import (
 	"errors"
 	"testing"
+
+	graphql "github.com/cli/shurcooL-graphql"
 )
 
 // mockGraphQLDoer is a test double for graphQLDoer. queryFunc receives the
@@ -162,12 +164,12 @@ func TestFetchReviewRequestedPRs(t *testing.T) {
 			org:  "my-org",
 			queryFunc: func(_ string, q interface{}, variables map[string]interface{}) error {
 				wantQuery := "is:open is:pr review-requested:@me org:my-org"
-				gotQuery, ok := variables["query"].(string)
+				gotQuery, ok := variables["query"].(graphql.String)
 				if !ok {
 					return errors.New("missing query variable")
 				}
-				if gotQuery != wantQuery {
-					return errors.New("wrong query: got " + gotQuery)
+				if string(gotQuery) != wantQuery {
+					return errors.New("wrong query: got " + string(gotQuery))
 				}
 				result := q.(*searchReviewRequestedQuery)
 				result.Search.Nodes = nil
