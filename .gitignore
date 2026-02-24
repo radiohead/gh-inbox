@@ -1,5 +1,7 @@
 # Binaries
 /bin/
+/.bin/
+/gh-inbox
 *.exe
 *.exe~
 *.dll
