@@ -82,8 +82,9 @@ username: radiohead    # auto-detected from gh auth status
 1. Query: `is:open is:pr review-requested:@me org:{org}` via GraphQL search
 2. For each PR, fetch `reviewRequests` with `asCodeOwner` field
 3. **`--filter all`** (default): no filtering, show all PRs
-4. **`--filter direct`**: exclude PRs where my assignment is ONLY via CODEOWNERS AND there are other reviewers
-5. **`--filter codeowner`**: show only CODEOWNERS PRs where I'm the sole reviewer
+4. **`--filter direct`**: I'm requested as a User AND no other User reviewer shares any team with me
+5. **`--filter codeowner`**: ALL my review requests have `asCodeOwner=true`
+6. **`--filter team`**: my team is requested AND no User reviewer is a member of that team
 
 **Key verified GraphQL query** (tested live against grafana org):
 ```graphql
@@ -169,9 +170,8 @@ gh-inbox (Go binary)
   |     +-- issues.go    # issue fetching + mention-response detection
   |     +-- discussions.go
   +-- service/
-  |     +-- team.go      # TeamService — in-process membership cache, fail-open
-  +-- filter/
-  |     +-- filter.go    # Filter dispatcher + FilterDirect + FilterCodeowner
+  |     +-- team.go      # TeamService — membership cache, SharesTeamWith, fail-open/closed
+  |     +-- filter.go    # Filter dispatcher + filterDirect + filterCodeowner + filterTeam
   +-- output/
   |     +-- table.go     # human-friendly table output
   |     +-- json.go      # machine-readable JSON output

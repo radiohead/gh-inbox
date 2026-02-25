@@ -2,17 +2,21 @@ package service
 
 import "github.com/radiohead/gh-inbox/internal/github"
 
-// TeamMemberFetcher can retrieve all members of a GitHub team.
+// TeamMemberFetcher can retrieve team members and the authenticated user's teams.
 // github.Client satisfies this interface implicitly.
 type TeamMemberFetcher interface {
 	FetchTeamMembers(org, slug string) ([]github.TeamMember, error)
+	FetchMyTeams() ([]github.UserTeam, error)
 }
 
 // TeamService provides team membership queries with in-process caching.
 // It wraps a TeamMemberFetcher and lazily caches results per org/slug pair.
 type TeamService struct {
-	fetcher TeamMemberFetcher
-	cache   map[string]map[string]bool // "org/slug" -> login set
+	fetcher  TeamMemberFetcher
+	cache    map[string]map[string]bool // "org/slug" -> login set
+	myTeams  []github.UserTeam          // cached result of FetchMyTeams
+	myLoaded bool                       // whether myTeams has been fetched
+	myErr    error                      // error from FetchMyTeams (sticky)
 }
 
 // NewTeamService creates a TeamService backed by the given fetcher.
@@ -41,4 +45,33 @@ func (s *TeamService) IsTeamMember(org, slug, login string) bool {
 		s.cache[key] = set
 	}
 	return s.cache[key][login]
+}
+
+// SharesTeamWith reports whether otherLogin is a member of any team the
+// authenticated user belongs to within the given org. On fetch error the
+// function returns false (fail-closed: no overlap assumed, PR stays visible
+// in direct mode).
+func (s *TeamService) SharesTeamWith(org, otherLogin string) bool {
+	teams := s.loadMyTeams()
+	if teams == nil {
+		return false // fail-closed
+	}
+	for _, t := range teams {
+		if t.Organization.Login != org {
+			continue
+		}
+		if s.IsTeamMember(org, t.Slug, otherLogin) {
+			return true
+		}
+	}
+	return false
+}
+
+// loadMyTeams fetches and caches the authenticated user's teams.
+func (s *TeamService) loadMyTeams() []github.UserTeam {
+	if !s.myLoaded {
+		s.myTeams, s.myErr = s.fetcher.FetchMyTeams()
+		s.myLoaded = true
+	}
+	return s.myTeams
 }

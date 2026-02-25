@@ -5,7 +5,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/radiohead/gh-inbox/internal/filter"
 	"github.com/radiohead/gh-inbox/internal/github"
 	"github.com/radiohead/gh-inbox/internal/output"
 	"github.com/radiohead/gh-inbox/internal/service"
@@ -37,16 +36,13 @@ var reviewCmd = &cobra.Command{
 			return fmt.Errorf("fetching PRs: %w", err)
 		}
 
-		if mode != filter.ModeAll {
+		if mode != service.ModeAll {
 			login, err := client.FetchCurrentUser()
 			if err != nil {
 				return fmt.Errorf("fetching current user: %w", err)
 			}
 			svc := service.NewTeamService(client)
-			isMyTeam := func(org, slug string) bool {
-				return svc.IsTeamMember(org, slug, login)
-			}
-			prs = filter.Filter(prs, login, isMyTeam, mode)
+			prs = service.Filter(prs, login, svc, mode)
 		}
 
 		switch outputFormat {
@@ -62,19 +58,21 @@ var reviewCmd = &cobra.Command{
 
 func init() {
 	reviewCmd.Flags().StringVar(&reviewOpts.org, "org", "", "GitHub organization to filter by (default: all orgs)")
-	reviewCmd.Flags().StringVar(&reviewOpts.filterMode, "filter", "all", "Filter mode: all|direct|codeowner")
+	reviewCmd.Flags().StringVar(&reviewOpts.filterMode, "filter", "all", "Filter mode: all|direct|codeowner|team")
 }
 
-// parseFilterMode converts a filter flag string to a filter.Mode.
-func parseFilterMode(s string) (filter.Mode, error) {
+// parseFilterMode converts a filter flag string to a service.Mode.
+func parseFilterMode(s string) (service.Mode, error) {
 	switch s {
 	case "all", "":
-		return filter.ModeAll, nil
+		return service.ModeAll, nil
 	case "direct":
-		return filter.ModeDirect, nil
+		return service.ModeDirect, nil
 	case "codeowner":
-		return filter.ModeCodeowner, nil
+		return service.ModeCodeowner, nil
+	case "team":
+		return service.ModeTeam, nil
 	default:
-		return 0, fmt.Errorf("unknown filter mode %q: must be all, direct, or codeowner", s)
+		return 0, fmt.Errorf("unknown filter mode %q: must be all, direct, codeowner, or team", s)
 	}
 }

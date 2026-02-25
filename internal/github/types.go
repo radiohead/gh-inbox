@@ -22,3 +22,14 @@ type Repository struct {
 type TeamMember struct {
 	Login string `json:"login"`
 }
+
+// UserTeam represents a team the authenticated user belongs to.
+type UserTeam struct {
+	Slug         string           `json:"slug"`
+	Organization TeamOrganization `json:"organization"`
+}
+
+// TeamOrganization identifies the org a team belongs to.
+type TeamOrganization struct {
+	Login string `json:"login"`
+}

@@ -3,19 +3,20 @@ package prs
 import (
 	"testing"
 
-	"github.com/radiohead/gh-inbox/internal/filter"
+	"github.com/radiohead/gh-inbox/internal/service"
 )
 
 func TestParseFilterMode(t *testing.T) {
 	tests := []struct {
 		input    string
-		wantMode filter.Mode
+		wantMode service.Mode
 		wantErr  bool
 	}{
-		{input: "all", wantMode: filter.ModeAll},
-		{input: "", wantMode: filter.ModeAll},
-		{input: "direct", wantMode: filter.ModeDirect},
-		{input: "codeowner", wantMode: filter.ModeCodeowner},
+		{input: "all", wantMode: service.ModeAll},
+		{input: "", wantMode: service.ModeAll},
+		{input: "direct", wantMode: service.ModeDirect},
+		{input: "codeowner", wantMode: service.ModeCodeowner},
+		{input: "team", wantMode: service.ModeTeam},
 		{input: "invalid", wantErr: true},
 		{input: "DIRECT", wantErr: true},
 		{input: "solo", wantErr: true},

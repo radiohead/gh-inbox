@@ -49,3 +49,33 @@ func (c *Client) FetchTeamMembers(org, slug string) ([]TeamMember, error) {
 
 	return members, nil
 }
+
+// FetchMyTeams returns all teams the authenticated user belongs to via REST.
+// If a Cacher is configured on the Client, results are read from and written
+// to the cache to avoid redundant API calls.
+func (c *Client) FetchMyTeams() ([]UserTeam, error) {
+	cacheKey := "my-teams"
+
+	if c.cache != nil {
+		data, found, err := c.cache.Get(cacheKey)
+		if err == nil && found {
+			var cached []UserTeam
+			if jsonErr := json.Unmarshal(data, &cached); jsonErr == nil {
+				return cached, nil
+			}
+		}
+	}
+
+	var teams []UserTeam
+	if err := c.rest.Get("user/teams?per_page=100", &teams); err != nil {
+		return nil, fmt.Errorf("fetching user teams: %w", err)
+	}
+
+	if c.cache != nil {
+		if data, err := json.Marshal(teams); err == nil {
+			_ = c.cache.Set(cacheKey, data)
+		}
+	}
+
+	return teams, nil
+}
