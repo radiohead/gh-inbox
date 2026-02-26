@@ -7,11 +7,31 @@ import (
 	"time"
 
 	"github.com/radiohead/gh-inbox/internal/github"
+	"github.com/radiohead/gh-inbox/internal/service"
 )
+
+// noopFetcher satisfies service.TeamMemberFetcher with empty responses.
+type noopFetcher struct{}
+
+func (noopFetcher) FetchTeamMembers(_, _ string) ([]github.TeamMember, error) {
+	return nil, nil
+}
+func (noopFetcher) FetchMyTeams() ([]github.UserTeam, error) { return nil, nil }
+
+// tableTestFetcher satisfies service.TeamMemberFetcher with configurable data.
+type tableTestFetcher struct {
+	members map[string][]github.TeamMember
+	teams   []github.UserTeam
+}
+
+func (f tableTestFetcher) FetchTeamMembers(org, slug string) ([]github.TeamMember, error) {
+	return f.members[org+"/"+slug], nil
+}
+func (f tableTestFetcher) FetchMyTeams() ([]github.UserTeam, error) { return f.teams, nil }
 
 func TestWriteTable_empty(t *testing.T) {
 	var buf bytes.Buffer
-	if err := WriteTable(&buf, nil); err != nil {
+	if err := WriteTable(&buf, nil, "", service.NewTeamService(noopFetcher{})); err != nil {
 		t.Fatalf("WriteTable(nil) unexpected error: %v", err)
 	}
 	if !strings.Contains(buf.String(), "No pull requests found") {
@@ -30,14 +50,14 @@ func TestWriteTable_tabSeparated(t *testing.T) {
 			Repository: github.Repository{Owner: "acme", Name: "api"},
 			ReviewRequests: github.ReviewRequestConnection{
 				Nodes: []github.ReviewRequest{
-					{AsCodeOwner: false, RequestedReviewer: github.RequestedReviewer{Type: "User", Login: "alice"}},
+					{RequestedReviewer: github.RequestedReviewer{Type: "User", Login: "alice"}},
 				},
 			},
 		},
 	}
 
 	var buf bytes.Buffer
-	if err := WriteTable(&buf, prs); err != nil {
+	if err := WriteTable(&buf, prs, "alice", service.NewTeamService(noopFetcher{})); err != nil {
 		t.Fatalf("WriteTable unexpected error: %v", err)
 	}
 
@@ -73,7 +93,7 @@ func TestWriteTable_sortsByAgeOldestFirst(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	if err := WriteTable(&buf, prs); err != nil {
+	if err := WriteTable(&buf, prs, "", service.NewTeamService(noopFetcher{})); err != nil {
 		t.Fatalf("WriteTable unexpected error: %v", err)
 	}
 
@@ -81,51 +101,89 @@ func TestWriteTable_sortsByAgeOldestFirst(t *testing.T) {
 	oldestPos := strings.Index(out, "oldest")
 	middlePos := strings.Index(out, "middle")
 	newestPos := strings.Index(out, "newest")
-	if !(oldestPos < middlePos && middlePos < newestPos) {
+	if oldestPos >= middlePos || middlePos >= newestPos {
 		t.Errorf("expected oldest < middle < newest in output, got positions: oldest=%d middle=%d newest=%d\noutput: %q", oldestPos, middlePos, newestPos, out)
 	}
 }
 
 func TestSourceOf(t *testing.T) {
+	noop := service.NewTeamService(noopFetcher{})
+
 	tests := []struct {
 		name     string
+		login    string
 		requests []github.ReviewRequest
+		teams    *service.TeamService
 		want     string
 	}{
 		{
-			name:     "direct user non-codeowner",
-			requests: []github.ReviewRequest{{AsCodeOwner: false, RequestedReviewer: github.RequestedReviewer{Type: "User"}}},
-			want:     "direct",
-		},
-		{
-			name:     "team non-codeowner",
-			requests: []github.ReviewRequest{{AsCodeOwner: false, RequestedReviewer: github.RequestedReviewer{Type: "Team"}}},
-			want:     "team",
-		},
-		{
-			name:     "all codeowner",
-			requests: []github.ReviewRequest{{AsCodeOwner: true, RequestedReviewer: github.RequestedReviewer{Type: "User"}}},
-			want:     "codeowner",
-		},
-		{
-			name: "direct wins over team",
+			name:  "sole User reviewer → direct",
+			login: "alice",
 			requests: []github.ReviewRequest{
-				{AsCodeOwner: false, RequestedReviewer: github.RequestedReviewer{Type: "Team"}},
-				{AsCodeOwner: false, RequestedReviewer: github.RequestedReviewer{Type: "User"}},
+				{RequestedReviewer: github.RequestedReviewer{Type: "User", Login: "alice"}},
 			},
-			want: "direct",
+			teams: noop,
+			want:  "direct",
 		},
 		{
-			name:     "empty requests",
+			// carol is not in alice's teams (noop fetcher returns empty) → not a teammate
+			name:  "User + non-teammate → direct",
+			login: "alice",
+			requests: []github.ReviewRequest{
+				{RequestedReviewer: github.RequestedReviewer{Type: "User", Login: "alice"}},
+				{RequestedReviewer: github.RequestedReviewer{Type: "User", Login: "carol"}},
+			},
+			teams: noop,
+			want:  "direct",
+		},
+		{
+			// bob is alice's teammate → not direct, not team → codeowner
+			name:  "User + teammate → codeowner",
+			login: "alice",
+			requests: []github.ReviewRequest{
+				{RequestedReviewer: github.RequestedReviewer{Type: "User", Login: "alice"}},
+				{RequestedReviewer: github.RequestedReviewer{Type: "User", Login: "bob"}},
+			},
+			teams: service.NewTeamService(tableTestFetcher{
+				members: map[string][]github.TeamMember{
+					"org/myteam": {{Login: "alice"}, {Login: "bob"}},
+				},
+				teams: []github.UserTeam{
+					{Slug: "myteam", Organization: github.TeamOrganization{Login: "org"}},
+				},
+			}),
+			want: "codeowner",
+		},
+		{
+			// alice's team requested, no individual teammates → team
+			name:  "Team (my team), no individuals → team",
+			login: "alice",
+			requests: []github.ReviewRequest{
+				{RequestedReviewer: github.RequestedReviewer{Type: "Team", Login: "backend"}},
+			},
+			teams: service.NewTeamService(tableTestFetcher{
+				members: map[string][]github.TeamMember{
+					"org/backend": {{Login: "alice"}},
+				},
+			}),
+			want: "team",
+		},
+		{
+			name:     "empty requests → codeowner",
+			login:    "alice",
 			requests: nil,
+			teams:    noop,
 			want:     "codeowner",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			pr := github.PullRequest{ReviewRequests: github.ReviewRequestConnection{Nodes: tt.requests}}
-			got := sourceOf(pr)
+			pr := github.PullRequest{
+				Repository:     github.Repository{Owner: "org"},
+				ReviewRequests: github.ReviewRequestConnection{Nodes: tt.requests},
+			}
+			got := sourceOf(pr, tt.login, tt.teams)
 			if got != tt.want {
 				t.Errorf("sourceOf() = %q, want %q", got, tt.want)
 			}

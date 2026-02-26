@@ -36,12 +36,14 @@ var reviewCmd = &cobra.Command{
 			return fmt.Errorf("fetching PRs: %w", err)
 		}
 
+		login, err := client.FetchCurrentUser()
+		if err != nil {
+			return fmt.Errorf("fetching current user: %w", err)
+		}
+
+		svc := service.NewTeamService(client)
+
 		if mode != service.ModeAll {
-			login, err := client.FetchCurrentUser()
-			if err != nil {
-				return fmt.Errorf("fetching current user: %w", err)
-			}
-			svc := service.NewTeamService(client)
 			prs = service.Filter(prs, login, svc, mode)
 		}
 
@@ -49,7 +51,7 @@ var reviewCmd = &cobra.Command{
 		case "json":
 			return output.WriteJSON(cmd.OutOrStdout(), prs)
 		case "table", "":
-			return output.WriteTable(cmd.OutOrStdout(), prs)
+			return output.WriteTable(cmd.OutOrStdout(), prs, login, svc)
 		default:
 			return fmt.Errorf("unknown output format %q: must be table or json", outputFormat)
 		}

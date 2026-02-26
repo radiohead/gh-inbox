@@ -10,13 +10,14 @@ import (
 	"github.com/cli/go-gh/v2/pkg/term"
 
 	"github.com/radiohead/gh-inbox/internal/github"
+	"github.com/radiohead/gh-inbox/internal/service"
 )
 
 // WriteTable writes prs as a human-readable table to w.
 // In TTY mode, columns are rendered with colors and aligned to terminal width.
 // In non-TTY mode, output is tab-separated (suitable for scripting).
 // An empty list produces a single informational message instead of an empty table.
-func WriteTable(w io.Writer, prs []github.PullRequest) error {
+func WriteTable(w io.Writer, prs []github.PullRequest, myLogin string, teams *service.TeamService) error {
 	if len(prs) == 0 {
 		_, err := fmt.Fprintln(w, "No pull requests found.")
 		return err
@@ -39,7 +40,7 @@ func WriteTable(w io.Writer, prs []github.PullRequest) error {
 	for _, pr := range prs {
 		repo := pr.Repository.Owner + "/" + pr.Repository.Name
 		prNum := fmt.Sprintf("#%d", pr.Number)
-		source := sourceOf(pr)
+		source := sourceOf(pr, myLogin, teams)
 		age := humanAge(pr.CreatedAt)
 
 		tp.AddField(repo)
@@ -54,22 +55,13 @@ func WriteTable(w io.Writer, prs []github.PullRequest) error {
 	return tp.Render()
 }
 
-// sourceOf derives a SOURCE label from the review requests on pr.
-// Returns "direct" if any non-CODEOWNERS user request exists,
-// "team" if any non-CODEOWNERS team request exists, or "codeowner" otherwise.
-func sourceOf(pr github.PullRequest) string {
-	hasTeam := false
-	for _, rr := range pr.ReviewRequests.Nodes {
-		if !rr.AsCodeOwner {
-			switch rr.RequestedReviewer.Type {
-			case "User":
-				return "direct"
-			case "Team":
-				hasTeam = true
-			}
-		}
+// sourceOf derives a SOURCE label by applying the same predicates used by
+// the filter modes. Returns "direct", "team", or "codeowner".
+func sourceOf(pr github.PullRequest, myLogin string, teams *service.TeamService) string {
+	if service.MatchesDirect(pr, myLogin, teams) {
+		return "direct"
 	}
-	if hasTeam {
+	if service.MatchesTeam(pr, myLogin, teams) {
 		return "team"
 	}
 	return "codeowner"
