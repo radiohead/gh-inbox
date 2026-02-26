@@ -171,7 +171,7 @@ gh-inbox (Go binary)
   |     +-- discussions.go
   +-- service/
   |     +-- team.go      # TeamService — membership cache, SharesTeamWith, fail-open/closed
-  |     +-- filter.go    # Filter dispatcher + filterDirect + filterCodeowner + filterTeam
+  |     +-- filter.go    # Filter dispatcher + matchesDirect + matchesTeam predicates + filterDirect + filterCodeowner + filterTeam
   +-- output/
   |     +-- table.go     # human-friendly table output
   |     +-- json.go      # machine-readable JSON output

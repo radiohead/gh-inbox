@@ -9,12 +9,13 @@ const (
 	// ModeAll is the default — no filtering, all PRs are shown.
 	ModeAll Mode = iota
 
-	// ModeDirect shows PRs where I'm requested as a User AND no other User
-	// reviewer shares any team with me.
+	// ModeDirect shows PRs where I'm requested as a User AND either I have an
+	// explicit (non-codeowner) request, or I'm the sole reviewer on the PR.
 	ModeDirect
 
-	// ModeCodeowner shows PRs where ALL my review requests come from
-	// CODEOWNERS (asCodeOwner=true for every "mine" request).
+	// ModeCodeowner shows PRs that are neither direct nor team — the pure
+	// fallback bucket covering codeowner-only review requests not handled by
+	// the other two modes.
 	ModeCodeowner
 
 	// ModeTeam shows PRs where my team is requested AND no User reviewer
@@ -26,7 +27,7 @@ const (
 func Filter(prs []github.PullRequest, myLogin string, teams *TeamService, mode Mode) []github.PullRequest {
 	switch mode {
 	case ModeDirect:
-		return filterDirect(prs, myLogin, teams)
+		return filterDirect(prs, myLogin)
 	case ModeCodeowner:
 		return filterCodeowner(prs, myLogin, teams)
 	case ModeTeam:
@@ -36,55 +37,55 @@ func Filter(prs []github.PullRequest, myLogin string, teams *TeamService, mode M
 	}
 }
 
+// matchesDirect reports whether myLogin is requested as a User AND either
+// has an explicit (non-codeowner) request OR is the sole reviewer.
+func matchesDirect(pr github.PullRequest, myLogin string) bool {
+	isMine, meExplicit, hasOthers := false, false, false
+	for _, rr := range pr.ReviewRequests.Nodes {
+		if rr.RequestedReviewer.Type == "User" && rr.RequestedReviewer.Login == myLogin {
+			isMine = true
+			if !rr.AsCodeOwner {
+				meExplicit = true
+			}
+		} else {
+			hasOthers = true
+		}
+	}
+	return isMine && (meExplicit || !hasOthers)
+}
+
+// matchesTeam reports whether at least one of myLogin's teams is requested.
+func matchesTeam(pr github.PullRequest, myLogin string, teams *TeamService) bool {
+	org := pr.Repository.Owner
+	for _, rr := range pr.ReviewRequests.Nodes {
+		if rr.RequestedReviewer.Type == "Team" && teams.IsTeamMember(org, rr.RequestedReviewer.Login, myLogin) {
+			return true
+		}
+	}
+	return false
+}
+
 // filterDirect includes a PR when:
 //   - I'm requested as a User (requestedReviewer.Login == myLogin, type == "User")
-//   - No other User reviewer shares any team with me
-func filterDirect(prs []github.PullRequest, myLogin string, teams *TeamService) []github.PullRequest {
+//   - AND at least one of my requests has AsCodeOwner=false (explicit), OR I'm
+//     the sole reviewer (no other reviewers at all)
+func filterDirect(prs []github.PullRequest, myLogin string) []github.PullRequest {
 	result := make([]github.PullRequest, 0, len(prs))
 	for _, pr := range prs {
-		org := pr.Repository.Owner
-		meRequested := false
-		var otherUsers []string
-
-		for _, rr := range pr.ReviewRequests.Nodes {
-			if rr.RequestedReviewer.Type != "User" {
-				continue
-			}
-			if rr.RequestedReviewer.Login == myLogin {
-				meRequested = true
-			} else {
-				otherUsers = append(otherUsers, rr.RequestedReviewer.Login)
-			}
-		}
-
-		if !meRequested {
-			continue
-		}
-
-		sharesTeam := false
-		for _, other := range otherUsers {
-			if teams.SharesTeamWith(org, other) {
-				sharesTeam = true
-				break
-			}
-		}
-		if !sharesTeam {
+		if matchesDirect(pr, myLogin) {
 			result = append(result, pr)
 		}
 	}
 	return result
 }
 
-// filterCodeowner includes a PR when all my review requests have asCodeOwner=true.
+// filterCodeowner includes a PR when it is NOT direct AND NOT team — the
+// fallback bucket for codeowner-only review requests not claimed by the
+// other two modes.
 func filterCodeowner(prs []github.PullRequest, myLogin string, teams *TeamService) []github.PullRequest {
 	result := make([]github.PullRequest, 0, len(prs))
 	for _, pr := range prs {
-		org := pr.Repository.Owner
-		rc := classifyReviewRequests(pr, myLogin, org, teams)
-		if len(rc.mineCodeOwner) == 0 {
-			continue
-		}
-		if allTrue(rc.mineCodeOwner) {
+		if !matchesDirect(pr, myLogin) && !matchesTeam(pr, myLogin, teams) {
 			result = append(result, pr)
 		}
 	}
@@ -137,37 +138,4 @@ func filterTeam(prs []github.PullRequest, myLogin string, teams *TeamService) []
 		}
 	}
 	return result
-}
-
-// reviewClassification holds the result of classifying review requests for a PR.
-type reviewClassification struct {
-	mineCodeOwner []bool
-}
-
-// classifyReviewRequests classifies each review request as "mine" or not.
-func classifyReviewRequests(pr github.PullRequest, myLogin, org string, teams *TeamService) reviewClassification {
-	var rc reviewClassification
-	for _, rr := range pr.ReviewRequests.Nodes {
-		isMine := false
-		switch rr.RequestedReviewer.Type {
-		case "User":
-			isMine = rr.RequestedReviewer.Login == myLogin
-		case "Team":
-			isMine = teams.IsTeamMember(org, rr.RequestedReviewer.Login, myLogin)
-		}
-		if isMine {
-			rc.mineCodeOwner = append(rc.mineCodeOwner, rr.AsCodeOwner)
-		}
-	}
-	return rc
-}
-
-// allTrue reports whether every value in vals is true.
-func allTrue(vals []bool) bool {
-	for _, v := range vals {
-		if !v {
-			return false
-		}
-	}
-	return true
 }

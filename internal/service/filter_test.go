@@ -74,12 +74,10 @@ func TestFilterDirect(t *testing.T) {
 		name      string
 		prs       []github.PullRequest
 		myLogin   string
-		members   map[string][]github.TeamMember
-		myTeams   []github.UserTeam
 		wantCount int
 	}{
 		{
-			name: "only me requested as User — include",
+			name: "sole explicit User request — include",
 			prs: []github.PullRequest{
 				buildPR("org/repo", []github.ReviewRequest{
 					userReq("alice", false),
@@ -89,59 +87,61 @@ func TestFilterDirect(t *testing.T) {
 			wantCount: 1,
 		},
 		{
-			name: "me + teammate (shares team) — exclude",
+			name: "sole codeowner User request (no others) — include (sole reviewer fallback)",
 			prs: []github.PullRequest{
 				buildPR("org/repo", []github.ReviewRequest{
-					userReq("alice", false),
-					userReq("john", false),
+					userReq("alice", true),
 				}),
 			},
-			myLogin: "alice",
-			myTeams: []github.UserTeam{
-				{Slug: "backend", Organization: github.TeamOrganization{Login: "org"}},
-			},
-			members: map[string][]github.TeamMember{
-				"org/backend": {{Login: "alice"}, {Login: "john"}},
-			},
-			wantCount: 0,
-		},
-		{
-			name: "me + non-teammate (no shared teams) — include",
-			prs: []github.PullRequest{
-				buildPR("org/repo", []github.ReviewRequest{
-					userReq("alice", false),
-					userReq("bob", false),
-				}),
-			},
-			myLogin: "alice",
-			myTeams: []github.UserTeam{
-				{Slug: "backend", Organization: github.TeamOrganization{Login: "org"}},
-			},
-			members: map[string][]github.TeamMember{
-				"org/backend": {{Login: "alice"}},
-			},
+			myLogin:   "alice",
 			wantCount: 1,
 		},
 		{
-			name: "me + mixed (one shares team) — exclude",
+			name: "explicit User + other User — include",
 			prs: []github.PullRequest{
 				buildPR("org/repo", []github.ReviewRequest{
 					userReq("alice", false),
 					userReq("bob", false),
-					userReq("john", false),
 				}),
 			},
-			myLogin: "alice",
-			myTeams: []github.UserTeam{
-				{Slug: "backend", Organization: github.TeamOrganization{Login: "org"}},
+			myLogin:   "alice",
+			wantCount: 1,
+		},
+		{
+			name: "codeowner User + other User — exclude",
+			prs: []github.PullRequest{
+				buildPR("org/repo", []github.ReviewRequest{
+					userReq("alice", true),
+					userReq("bob", false),
+				}),
 			},
-			members: map[string][]github.TeamMember{
-				"org/backend": {{Login: "alice"}, {Login: "john"}},
-			},
+			myLogin:   "alice",
 			wantCount: 0,
 		},
 		{
-			name: "me via team only (not as User) — exclude",
+			name: "codeowner User + Team — exclude",
+			prs: []github.PullRequest{
+				buildPR("org/repo", []github.ReviewRequest{
+					userReq("alice", true),
+					teamReq("backend", false),
+				}),
+			},
+			myLogin:   "alice",
+			wantCount: 0,
+		},
+		{
+			name: "mixed explicit + codeowner (two requests for me) — include",
+			prs: []github.PullRequest{
+				buildPR("org/repo", []github.ReviewRequest{
+					userReq("alice", false),
+					userReq("alice", true),
+				}),
+			},
+			myLogin:   "alice",
+			wantCount: 1,
+		},
+		{
+			name: "Team request only (not as User) — exclude",
 			prs: []github.PullRequest{
 				buildPR("org/repo", []github.ReviewRequest{
 					teamReq("backend", false),
@@ -159,7 +159,7 @@ func TestFilterDirect(t *testing.T) {
 			wantCount: 0,
 		},
 		{
-			name: "me as User + team also requested — include",
+			name: "explicit User + Team also requested — include",
 			prs: []github.PullRequest{
 				buildPR("org/repo", []github.ReviewRequest{
 					userReq("alice", false),
@@ -173,7 +173,7 @@ func TestFilterDirect(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			svc := newMockTeamService(tt.members, tt.myTeams)
+			svc := newMockTeamService(nil, nil)
 			got := Filter(tt.prs, tt.myLogin, svc, ModeDirect)
 			if len(got) != tt.wantCount {
 				t.Errorf("filterDirect returned %d PRs, want %d", len(got), tt.wantCount)
@@ -306,17 +306,19 @@ func TestFilterCodeowner(t *testing.T) {
 		wantCount int
 	}{
 		{
-			name: "sole codeowner — include",
+			// Sole codeowner User → matches direct (sole reviewer fallback) → excluded from codeowner
+			name: "sole codeowner User — exclude (matches direct as sole reviewer)",
 			prs: []github.PullRequest{
 				buildPR("org/repo", []github.ReviewRequest{
 					userReq("alice", true),
 				}),
 			},
 			myLogin:   "alice",
-			wantCount: 1,
+			wantCount: 0,
 		},
 		{
-			name: "codeowner with other reviewers — include",
+			// Codeowner + other non-team User → not direct (codeowner only + others), not team → include
+			name: "codeowner + other User (not my team) — include (fallback)",
 			prs: []github.PullRequest{
 				buildPR("org/repo", []github.ReviewRequest{
 					userReq("alice", true),
@@ -327,7 +329,8 @@ func TestFilterCodeowner(t *testing.T) {
 			wantCount: 1,
 		},
 		{
-			name: "explicit request (not codeowner) — exclude",
+			// Explicit User request → matches direct → excluded from codeowner
+			name: "explicit only — exclude (matches direct)",
 			prs: []github.PullRequest{
 				buildPR("org/repo", []github.ReviewRequest{
 					userReq("alice", false),
@@ -337,18 +340,8 @@ func TestFilterCodeowner(t *testing.T) {
 			wantCount: 0,
 		},
 		{
-			name: "mixed explicit + codeowner — exclude (not all codeowner)",
-			prs: []github.PullRequest{
-				buildPR("org/repo", []github.ReviewRequest{
-					userReq("alice", false),
-					userReq("alice", true),
-				}),
-			},
-			myLogin:   "alice",
-			wantCount: 0,
-		},
-		{
-			name: "team codeowner, user is member — include",
+			// Team codeowner where I'm a member → matches team → excluded from codeowner
+			name: "Team codeowner (my team member) — exclude (matches team)",
 			prs: []github.PullRequest{
 				buildPR("org/repo", []github.ReviewRequest{
 					teamReq("backend", true),
@@ -358,14 +351,46 @@ func TestFilterCodeowner(t *testing.T) {
 			members: map[string][]github.TeamMember{
 				"org/backend": {{Login: "alice"}},
 			},
+			wantCount: 0,
+		},
+		{
+			// Codeowner User + other non-team User + Team that isn't mine → fallback
+			name: "codeowner User + other non-team User + Team (not mine) — include",
+			prs: []github.PullRequest{
+				buildPR("org/repo", []github.ReviewRequest{
+					userReq("alice", true),
+					userReq("bob", false),
+					teamReq("frontend", false),
+				}),
+			},
+			myLogin: "alice",
+			members: map[string][]github.TeamMember{
+				"org/frontend": {{Login: "bob"}, {Login: "carol"}},
+			},
 			wantCount: 1,
 		},
 		{
-			name: "empty requests — exclude",
+			// Empty requests → no direct, no team → include as fallback
+			name: "empty requests — include (neither direct nor team)",
 			prs: []github.PullRequest{
 				buildPR("org/repo", []github.ReviewRequest{}),
 			},
 			myLogin:   "alice",
+			wantCount: 1,
+		},
+		{
+			// Codeowner User + Team (my team) → matches team → excluded from codeowner
+			name: "codeowner User + Team (my team) — exclude (matches team)",
+			prs: []github.PullRequest{
+				buildPR("org/repo", []github.ReviewRequest{
+					userReq("alice", true),
+					teamReq("backend", false),
+				}),
+			},
+			myLogin: "alice",
+			members: map[string][]github.TeamMember{
+				"org/backend": {{Login: "alice"}, {Login: "john"}},
+			},
 			wantCount: 0,
 		},
 	}
