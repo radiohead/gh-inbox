@@ -31,31 +31,51 @@ var reviewCmd = &cobra.Command{
 			return fmt.Errorf("creating GitHub client: %w", err)
 		}
 
-		prs, err := client.FetchReviewRequestedPRs(reviewOpts.org)
+		var classifier service.Classifier
+		if needsUserContext(mode, outputFormat) {
+			login, err := client.FetchCurrentUser()
+			if err != nil {
+				return fmt.Errorf("fetching current user: %w", err)
+			}
+			svc := service.NewTeamService(client)
+			classifier = &service.SourceClassifier{Login: login, Teams: svc}
+		} else {
+			classifier = service.PassthroughClassifier{}
+		}
+
+		pipeline := service.NewPipeline(
+			service.FetchFunc(client.FetchReviewRequestedPRs),
+			classifier,
+			&service.ModeFilter{Mode: mode},
+		)
+
+		results, err := pipeline.Run(reviewOpts.org)
 		if err != nil {
 			return fmt.Errorf("fetching PRs: %w", err)
 		}
 
-		login, err := client.FetchCurrentUser()
-		if err != nil {
-			return fmt.Errorf("fetching current user: %w", err)
-		}
-
-		svc := service.NewTeamService(client)
-
-		if mode != service.ModeAll {
-			prs = service.Filter(prs, login, svc, mode)
-		}
-
 		switch outputFormat {
 		case "json":
+			prs := make([]github.PullRequest, len(results))
+			for i, cp := range results {
+				prs[i] = cp.PR
+			}
 			return output.WriteJSON(cmd.OutOrStdout(), prs)
 		case "table", "":
-			return output.WriteTable(cmd.OutOrStdout(), prs, login, svc)
+			return output.WriteTable(cmd.OutOrStdout(), results)
 		default:
 			return fmt.Errorf("unknown output format %q: must be table or json", outputFormat)
 		}
 	},
+}
+
+// needsUserContext reports whether user/team lookups are required.
+// They are needed for non-all filters and for table source labeling.
+func needsUserContext(mode service.Mode, output string) bool {
+	if mode != service.ModeAll {
+		return true
+	}
+	return output == "table" || output == ""
 }
 
 func init() {

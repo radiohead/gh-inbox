@@ -204,7 +204,8 @@ gh-inbox (Go binary)
   |     +-- discussions.go
   +-- service/
   |     +-- team.go      # TeamService — membership cache, SharesTeamWith, fail-open/closed
-  |     +-- filter.go    # Filter dispatcher + matchesDirect + matchesTeam predicates + filterDirect + filterCodeowner + filterTeam
+  |     +-- classify.go  # Source type, Classify (direct > team > codeowner precedence)
+  |     +-- filter.go    # Filter dispatcher (uses Classify) + matchesDirect/matchesTeam predicates
   +-- output/
   |     +-- table.go     # human-friendly table output
   |     +-- json.go      # machine-readable JSON output

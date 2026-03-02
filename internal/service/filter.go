@@ -22,30 +22,18 @@ const (
 	ModeTeam
 )
 
-// Filter dispatches to the appropriate filter based on mode.
-func Filter(prs []github.PullRequest, myLogin string, teams *TeamService, mode Mode) []github.PullRequest {
-	switch mode {
+// modeToSource maps a filter Mode to its corresponding Source.
+func modeToSource(m Mode) Source {
+	switch m {
 	case ModeDirect:
-		return filterDirect(prs, myLogin, teams)
-	case ModeCodeowner:
-		return filterCodeowner(prs, myLogin, teams)
+		return SourceDirect
 	case ModeTeam:
-		return filterTeam(prs, myLogin, teams)
+		return SourceTeam
+	case ModeCodeowner:
+		return SourceCodeowner
 	default:
-		return prs
+		return "" // ModeAll handled before this is called
 	}
-}
-
-// MatchesDirect is the exported predicate for direct-mode matching.
-// Used by the output package to label PR sources.
-func MatchesDirect(pr github.PullRequest, myLogin string, teams *TeamService) bool {
-	return matchesDirect(pr, myLogin, teams)
-}
-
-// MatchesTeam is the exported predicate for team-mode matching.
-// Used by the output package to label PR sources.
-func MatchesTeam(pr github.PullRequest, myLogin string, teams *TeamService) bool {
-	return matchesTeam(pr, myLogin, teams)
 }
 
 // matchesDirect reports whether myLogin is requested as a User AND no other
@@ -85,40 +73,4 @@ func matchesTeam(pr github.PullRequest, myLogin string, teams *TeamService) bool
 		}
 	}
 	return hasMyTeam
-}
-
-// filterDirect includes a PR when myLogin is requested as a User AND no other
-// User reviewer shares any of the authenticated user's teams.
-func filterDirect(prs []github.PullRequest, myLogin string, teams *TeamService) []github.PullRequest {
-	result := make([]github.PullRequest, 0, len(prs))
-	for _, pr := range prs {
-		if matchesDirect(pr, myLogin, teams) {
-			result = append(result, pr)
-		}
-	}
-	return result
-}
-
-// filterCodeowner includes a PR when it is NOT direct AND NOT team — the
-// residual bucket for PRs where the user reviews alongside teammates.
-func filterCodeowner(prs []github.PullRequest, myLogin string, teams *TeamService) []github.PullRequest {
-	result := make([]github.PullRequest, 0, len(prs))
-	for _, pr := range prs {
-		if !matchesDirect(pr, myLogin, teams) && !matchesTeam(pr, myLogin, teams) {
-			result = append(result, pr)
-		}
-	}
-	return result
-}
-
-// filterTeam includes a PR when at least one of the authenticated user's teams
-// is requested AND no individual User reviewer shares any of those teams.
-func filterTeam(prs []github.PullRequest, myLogin string, teams *TeamService) []github.PullRequest {
-	result := make([]github.PullRequest, 0, len(prs))
-	for _, pr := range prs {
-		if matchesTeam(pr, myLogin, teams) {
-			result = append(result, pr)
-		}
-	}
-	return result
 }

@@ -9,7 +9,6 @@ import (
 	"github.com/cli/go-gh/v2/pkg/tableprinter"
 	"github.com/cli/go-gh/v2/pkg/term"
 
-	"github.com/radiohead/gh-inbox/internal/github"
 	"github.com/radiohead/gh-inbox/internal/service"
 )
 
@@ -17,7 +16,7 @@ import (
 // In TTY mode, columns are rendered with colors and aligned to terminal width.
 // In non-TTY mode, output is tab-separated (suitable for scripting).
 // An empty list produces a single informational message instead of an empty table.
-func WriteTable(w io.Writer, prs []github.PullRequest, myLogin string, teams *service.TeamService) error {
+func WriteTable(w io.Writer, prs []service.ClassifiedPR) error {
 	if len(prs) == 0 {
 		_, err := fmt.Fprintln(w, "No pull requests found.")
 		return err
@@ -31,23 +30,24 @@ func WriteTable(w io.Writer, prs []github.PullRequest, myLogin string, teams *se
 	}
 
 	sort.SliceStable(prs, func(i, j int) bool {
-		return prs[i].CreatedAt.Before(prs[j].CreatedAt)
+		return prs[i].PR.CreatedAt.Before(prs[j].PR.CreatedAt)
 	})
 
 	tp := tableprinter.New(w, isTTY, width)
 	tp.AddHeader([]string{"REPO", "PR", "TITLE", "URL", "SOURCE", "AGE"})
 
-	for _, pr := range prs {
+	for _, cp := range prs {
+		pr := cp.PR
 		repo := pr.Repository.Owner + "/" + pr.Repository.Name
 		prNum := fmt.Sprintf("#%d", pr.Number)
-		source := sourceOf(pr, myLogin, teams)
+		src := sourceLabel(cp.Source)
 		age := humanAge(pr.CreatedAt)
 
 		tp.AddField(repo)
 		tp.AddField(prNum)
 		tp.AddField(pr.Title)
 		tp.AddField(pr.URL)
-		tp.AddField(source, tableprinter.WithColor(sourceColor(source)))
+		tp.AddField(src, tableprinter.WithColor(sourceColor(src)))
 		tp.AddField(age)
 		tp.EndRow()
 	}
@@ -55,16 +55,13 @@ func WriteTable(w io.Writer, prs []github.PullRequest, myLogin string, teams *se
 	return tp.Render()
 }
 
-// sourceOf derives a SOURCE label by applying the same predicates used by
-// the filter modes. Returns "direct", "team", or "codeowner".
-func sourceOf(pr github.PullRequest, myLogin string, teams *service.TeamService) string {
-	if service.MatchesDirect(pr, myLogin, teams) {
-		return "direct"
+// sourceLabel converts a Source to its display string.
+// An empty Source (from PassthroughClassifier) renders as "-".
+func sourceLabel(s service.Source) string {
+	if s == "" {
+		return "-"
 	}
-	if service.MatchesTeam(pr, myLogin, teams) {
-		return "team"
-	}
-	return "codeowner"
+	return string(s)
 }
 
 // sourceColor returns an ANSI color function for the given source label.
@@ -75,7 +72,7 @@ func sourceColor(source string) func(string) string {
 		return func(s string) string { return "\033[32m" + s + "\033[0m" } // green
 	case "team":
 		return func(s string) string { return "\033[33m" + s + "\033[0m" } // yellow
-	default: // codeowner
+	default: // codeowner or "-"
 		return func(s string) string { return "\033[36m" + s + "\033[0m" } // cyan
 	}
 }
