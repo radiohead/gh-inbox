@@ -205,10 +205,13 @@ gh-inbox (Go binary)
   +-- service/
   |     +-- team.go      # TeamService — membership cache, SharesTeamWith, fail-open/closed
   |     +-- classify.go  # Source type, Classify (direct > team > codeowner precedence)
-  |     +-- filter.go    # Filter dispatcher (uses Classify) + matchesDirect/matchesTeam predicates
+  |     +-- filter.go    # Mode type + constants, matchesDirect/matchesTeam predicates
+  |     +-- pipeline.go  # ClassifiedPR; Fetcher/Classifier/PRFilter interfaces;
+  |                      # FetchFunc, SourceClassifier, PassthroughClassifier, ModeFilter;
+  |                      # Pipeline + NewPipeline + Run
   +-- output/
-  |     +-- table.go     # human-friendly table output
-  |     +-- json.go      # machine-readable JSON output
+  |     +-- table.go     # WriteTable(w, []ClassifiedPR) — reads precomputed Source
+  |     +-- json.go      # WriteJSON(w, any) — called with []PullRequest (Source stripped)
   +-- cmd/
         +-- root.go      # `gh inbox` root command
         +-- prs/
