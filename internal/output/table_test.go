@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/radiohead/gh-inbox/internal/github"
+	"github.com/radiohead/gh-inbox/internal/service"
 )
 
 func TestWriteTable_empty(t *testing.T) {
@@ -21,17 +22,15 @@ func TestWriteTable_empty(t *testing.T) {
 
 func TestWriteTable_tabSeparated(t *testing.T) {
 	now := time.Now()
-	prs := []github.PullRequest{
+	prs := []service.ClassifiedPR{
 		{
-			Number:    42,
-			Title:     "Fix the bug",
-			URL:       "https://github.com/acme/api/pull/42",
-			CreatedAt: now.Add(-2 * 24 * time.Hour),
-			Repository: github.Repository{Owner: "acme", Name: "api"},
-			ReviewRequests: github.ReviewRequestConnection{
-				Nodes: []github.ReviewRequest{
-					{AsCodeOwner: false, RequestedReviewer: github.RequestedReviewer{Type: "User", Login: "alice"}},
-				},
+			Source: service.SourceDirect,
+			PR: github.PullRequest{
+				Number:    42,
+				Title:     "Fix the bug",
+				URL:       "https://github.com/acme/api/pull/42",
+				CreatedAt: now.Add(-2 * 24 * time.Hour),
+				Repository: github.Repository{Owner: "acme", Name: "api"},
 			},
 		},
 	}
@@ -42,7 +41,6 @@ func TestWriteTable_tabSeparated(t *testing.T) {
 	}
 
 	out := buf.String()
-	// In non-TTY (test) mode the printer outputs tab-separated values.
 	if !strings.Contains(out, "acme/api") {
 		t.Errorf("expected repo in output, got: %q", out)
 	}
@@ -58,18 +56,40 @@ func TestWriteTable_tabSeparated(t *testing.T) {
 	if !strings.Contains(out, "direct") {
 		t.Errorf("expected source=direct in output, got: %q", out)
 	}
-	// Age should be "2d"
 	if !strings.Contains(out, "2d") {
 		t.Errorf("expected age=2d in output, got: %q", out)
 	}
 }
 
+func TestWriteTable_emptySourceRenderedAsDash(t *testing.T) {
+	prs := []service.ClassifiedPR{
+		{
+			// Source is empty — PassthroughClassifier path
+			PR: github.PullRequest{
+				Number:     1,
+				Title:      "Some PR",
+				URL:        "https://github.com/acme/api/pull/1",
+				CreatedAt:  time.Now().Add(-1 * time.Hour),
+				Repository: github.Repository{Owner: "acme", Name: "api"},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := WriteTable(&buf, prs); err != nil {
+		t.Fatalf("WriteTable unexpected error: %v", err)
+	}
+	if !strings.Contains(buf.String(), "-") {
+		t.Errorf("expected source=- for empty Source, got: %q", buf.String())
+	}
+}
+
 func TestWriteTable_sortsByAgeOldestFirst(t *testing.T) {
 	now := time.Now()
-	prs := []github.PullRequest{
-		{Number: 1, Title: "newest", URL: "https://github.com/acme/api/pull/1", CreatedAt: now.Add(-1 * 24 * time.Hour), Repository: github.Repository{Owner: "acme", Name: "api"}},
-		{Number: 3, Title: "oldest", URL: "https://github.com/acme/api/pull/3", CreatedAt: now.Add(-10 * 24 * time.Hour), Repository: github.Repository{Owner: "acme", Name: "api"}},
-		{Number: 2, Title: "middle", URL: "https://github.com/acme/api/pull/2", CreatedAt: now.Add(-5 * 24 * time.Hour), Repository: github.Repository{Owner: "acme", Name: "api"}},
+	prs := []service.ClassifiedPR{
+		{Source: service.SourceDirect, PR: github.PullRequest{Number: 1, Title: "newest", URL: "https://github.com/acme/api/pull/1", CreatedAt: now.Add(-1 * 24 * time.Hour), Repository: github.Repository{Owner: "acme", Name: "api"}}},
+		{Source: service.SourceDirect, PR: github.PullRequest{Number: 3, Title: "oldest", URL: "https://github.com/acme/api/pull/3", CreatedAt: now.Add(-10 * 24 * time.Hour), Repository: github.Repository{Owner: "acme", Name: "api"}}},
+		{Source: service.SourceDirect, PR: github.PullRequest{Number: 2, Title: "middle", URL: "https://github.com/acme/api/pull/2", CreatedAt: now.Add(-5 * 24 * time.Hour), Repository: github.Repository{Owner: "acme", Name: "api"}}},
 	}
 
 	var buf bytes.Buffer
@@ -81,55 +101,8 @@ func TestWriteTable_sortsByAgeOldestFirst(t *testing.T) {
 	oldestPos := strings.Index(out, "oldest")
 	middlePos := strings.Index(out, "middle")
 	newestPos := strings.Index(out, "newest")
-	if !(oldestPos < middlePos && middlePos < newestPos) {
+	if oldestPos >= middlePos || middlePos >= newestPos {
 		t.Errorf("expected oldest < middle < newest in output, got positions: oldest=%d middle=%d newest=%d\noutput: %q", oldestPos, middlePos, newestPos, out)
-	}
-}
-
-func TestSourceOf(t *testing.T) {
-	tests := []struct {
-		name     string
-		requests []github.ReviewRequest
-		want     string
-	}{
-		{
-			name:     "direct user non-codeowner",
-			requests: []github.ReviewRequest{{AsCodeOwner: false, RequestedReviewer: github.RequestedReviewer{Type: "User"}}},
-			want:     "direct",
-		},
-		{
-			name:     "team non-codeowner",
-			requests: []github.ReviewRequest{{AsCodeOwner: false, RequestedReviewer: github.RequestedReviewer{Type: "Team"}}},
-			want:     "team",
-		},
-		{
-			name:     "all codeowner",
-			requests: []github.ReviewRequest{{AsCodeOwner: true, RequestedReviewer: github.RequestedReviewer{Type: "User"}}},
-			want:     "codeowner",
-		},
-		{
-			name: "direct wins over team",
-			requests: []github.ReviewRequest{
-				{AsCodeOwner: false, RequestedReviewer: github.RequestedReviewer{Type: "Team"}},
-				{AsCodeOwner: false, RequestedReviewer: github.RequestedReviewer{Type: "User"}},
-			},
-			want: "direct",
-		},
-		{
-			name:     "empty requests",
-			requests: nil,
-			want:     "codeowner",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			pr := github.PullRequest{ReviewRequests: github.ReviewRequestConnection{Nodes: tt.requests}}
-			got := sourceOf(pr)
-			if got != tt.want {
-				t.Errorf("sourceOf() = %q, want %q", got, tt.want)
-			}
-		})
 	}
 }
 

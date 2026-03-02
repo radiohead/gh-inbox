@@ -80,11 +80,31 @@ username: radiohead    # auto-detected from gh auth status
 
 **Logic**:
 1. Query: `is:open is:pr review-requested:@me org:{org}` via GraphQL search
-2. For each PR, fetch `reviewRequests` with `asCodeOwner` field
-3. **`--filter all`** (default): no filtering, show all PRs
-4. **`--filter direct`**: I'm requested as a User AND no other User reviewer shares any team with me
-5. **`--filter codeowner`**: ALL my review requests have `asCodeOwner=true`
-6. **`--filter team`**: my team is requested AND no User reviewer is a member of that team
+2. For each PR, fetch `reviewRequests` with reviewer type and login
+3. Fetch authenticated user's teams via REST (`GET /user/teams`)
+4. Client-side filtering using **teammate detection** (see below)
+
+**Filter modes** (`--filter`):
+
+| Mode | Semantics |
+|------|-----------|
+| `all` (default) | No filtering — show all PRs |
+| `direct` | I'm a User reviewer AND no other User reviewer shares any of my teams |
+| `team` | My team is requested AND no individual User reviewer shares any of my teams |
+| `codeowner` | Residual — PRs matching neither `direct` nor `team` (I review alongside teammates) |
+
+**Why teammate detection instead of `asCodeOwner`?**
+
+The GraphQL `asCodeOwner` field is unreliable for User review requests. When
+GitHub's CODEOWNERS team auto-assign expands a team into individual users,
+those users get `asCodeOwner=false` even though the review was
+CODEOWNERS-originated. This made `--filter=direct` show CODEOWNERS
+auto-assigns and `--filter=codeowner` return zero results.
+
+The teammate-based approach uses `SharesTeamWith` to detect whether other User
+reviewers are on any of my teams. CODEOWNERS auto-assign always produces
+multiple reviewers from the same team, so this signal reliably distinguishes
+direct requests from CODEOWNERS fan-out.
 
 **Key verified GraphQL query** (tested live against grafana org):
 ```graphql
@@ -95,7 +115,6 @@ search(query: "is:open is:pr review-requested:@me org:grafana", type: ISSUE, fir
       repository { nameWithOwner }
       reviewRequests(first: 20) {
         nodes {
-          asCodeOwner                              # <-- THE KEY FIELD
           requestedReviewer {
             ... on User { login }
             ... on Team { name slug }
@@ -107,19 +126,33 @@ search(query: "is:open is:pr review-requested:@me org:grafana", type: ISSUE, fir
 }
 ```
 
-**Client-side filtering pseudocode**:
+**Client-side filtering logic**:
+
 ```
-for each PR:
-  my_requests = requests where reviewer == me (user or via team)
-  if all my_requests have asCodeOwner == true:
-    other_reviewers = requests where reviewer != me
-    if other_reviewers exist AND --include-codeowners not set:
-      SKIP  # someone else can review via CODEOWNERS too
-    else:
-      SHOW  # I'm the only CODEOWNERS reviewer
-  else:
-    SHOW    # at least one explicit request for me
+# Data: my teams fetched via GET /user/teams (cached per session)
+# SharesTeamWith(org, login) = login is in any of my teams within org
+
+matchesDirect(pr):
+  for each reviewer in pr.reviewRequests:
+    skip if not a User
+    if reviewer == me:  meRequested = true
+    else if SharesTeamWith(org, reviewer):  return false   # teammate → not direct
+  return meRequested
+
+matchesTeam(pr):
+  for each reviewer in pr.reviewRequests:
+    if Team and I'm a member:  hasMyTeam = true
+    if User and != me and SharesTeamWith(org, reviewer):  return false
+  return hasMyTeam
+
+--filter=direct:    matchesDirect(pr)
+--filter=team:      matchesTeam(pr)
+--filter=codeowner: !matchesDirect(pr) AND !matchesTeam(pr)
 ```
+
+**Fail modes**: `SharesTeamWith` is fail-closed (returns false on API error →
+PR stays visible in direct mode). `IsTeamMember` is fail-open (returns true on
+error → avoids hiding PRs due to transient failures).
 
 ### b) My PRs Needing Attention (`gh inbox prs authored`)
 
@@ -171,10 +204,14 @@ gh-inbox (Go binary)
   |     +-- discussions.go
   +-- service/
   |     +-- team.go      # TeamService — membership cache, SharesTeamWith, fail-open/closed
-  |     +-- filter.go    # Filter dispatcher + filterDirect + filterCodeowner + filterTeam
+  |     +-- classify.go  # Source type, Classify (direct > team > codeowner precedence)
+  |     +-- filter.go    # Mode type + constants, matchesDirect/matchesTeam predicates
+  |     +-- pipeline.go  # ClassifiedPR; Fetcher/Classifier/PRFilter interfaces;
+  |                      # FetchFunc, SourceClassifier, PassthroughClassifier, ModeFilter;
+  |                      # Pipeline + NewPipeline + Run
   +-- output/
-  |     +-- table.go     # human-friendly table output
-  |     +-- json.go      # machine-readable JSON output
+  |     +-- table.go     # WriteTable(w, []ClassifiedPR) — reads precomputed Source
+  |     +-- json.go      # WriteJSON(w, any) — called with []PullRequest (Source stripped)
   +-- cmd/
         +-- root.go      # `gh inbox` root command
         +-- prs/
@@ -193,7 +230,7 @@ gh-inbox (Go binary)
 
 | Capability | API | Verified |
 |---|---|---|
-| `ReviewRequest.asCodeOwner` | GraphQL `ReviewRequest` type | Yes - tested, returns correct `true`/`false` |
+| `ReviewRequest.asCodeOwner` | GraphQL `ReviewRequest` type | Yes - tested, but unreliable for User requests after team auto-assign expansion. Not used for filtering; teammate detection via `SharesTeamWith` used instead. |
 | `PullRequestReviewThread.isResolved` | GraphQL | Yes - schema confirmed |
 | `Discussion` search + comments | GraphQL | Yes - schema confirmed |
 | Projects v2 field values | GraphQL `ProjectV2Item` | Schema confirmed |

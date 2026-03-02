@@ -40,3 +40,27 @@ func TestParseFilterMode(t *testing.T) {
 		})
 	}
 }
+
+func TestNeedsUserContext(t *testing.T) {
+	tests := []struct {
+		name   string
+		mode   service.Mode
+		output string
+		want   bool
+	}{
+		{name: "mode all json", mode: service.ModeAll, output: "json", want: false},
+		{name: "mode all table", mode: service.ModeAll, output: "table", want: true},
+		{name: "mode all empty output defaults table", mode: service.ModeAll, output: "", want: true},
+		{name: "mode direct json", mode: service.ModeDirect, output: "json", want: true},
+		{name: "mode team json", mode: service.ModeTeam, output: "json", want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := needsUserContext(tt.mode, tt.output)
+			if got != tt.want {
+				t.Errorf("needsUserContext(%v, %q) = %v, want %v", tt.mode, tt.output, got, tt.want)
+			}
+		})
+	}
+}

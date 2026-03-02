@@ -30,9 +30,13 @@ lint: $(LINTER_BINARY) ## Run golangci-lint
 run: build ## Build and run the binary
 	./gh-inbox
 
+EXT_DIR := $(HOME)/.local/gh-inbox
+
 install: build ## Install (or reinstall) as a gh extension
 	@gh extension remove inbox 2>/dev/null || true
-	gh extension install .
+	@mkdir -p $(EXT_DIR)
+	@ln -sf $(CURDIR)/gh-inbox $(EXT_DIR)/gh-inbox
+	@cd $(EXT_DIR) && gh extension install .
 
 $(LINTER_BINARY):
 	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(BIN_DIR) v$(LINTER_VERSION)

@@ -9,14 +9,14 @@ import (
 	"github.com/cli/go-gh/v2/pkg/tableprinter"
 	"github.com/cli/go-gh/v2/pkg/term"
 
-	"github.com/radiohead/gh-inbox/internal/github"
+	"github.com/radiohead/gh-inbox/internal/service"
 )
 
 // WriteTable writes prs as a human-readable table to w.
 // In TTY mode, columns are rendered with colors and aligned to terminal width.
 // In non-TTY mode, output is tab-separated (suitable for scripting).
 // An empty list produces a single informational message instead of an empty table.
-func WriteTable(w io.Writer, prs []github.PullRequest) error {
+func WriteTable(w io.Writer, prs []service.ClassifiedPR) error {
 	if len(prs) == 0 {
 		_, err := fmt.Fprintln(w, "No pull requests found.")
 		return err
@@ -30,23 +30,24 @@ func WriteTable(w io.Writer, prs []github.PullRequest) error {
 	}
 
 	sort.SliceStable(prs, func(i, j int) bool {
-		return prs[i].CreatedAt.Before(prs[j].CreatedAt)
+		return prs[i].PR.CreatedAt.Before(prs[j].PR.CreatedAt)
 	})
 
 	tp := tableprinter.New(w, isTTY, width)
 	tp.AddHeader([]string{"REPO", "PR", "TITLE", "URL", "SOURCE", "AGE"})
 
-	for _, pr := range prs {
+	for _, cp := range prs {
+		pr := cp.PR
 		repo := pr.Repository.Owner + "/" + pr.Repository.Name
 		prNum := fmt.Sprintf("#%d", pr.Number)
-		source := sourceOf(pr)
+		src := sourceLabel(cp.Source)
 		age := humanAge(pr.CreatedAt)
 
 		tp.AddField(repo)
 		tp.AddField(prNum)
 		tp.AddField(pr.Title)
 		tp.AddField(pr.URL)
-		tp.AddField(source, tableprinter.WithColor(sourceColor(source)))
+		tp.AddField(src, tableprinter.WithColor(sourceColor(src)))
 		tp.AddField(age)
 		tp.EndRow()
 	}
@@ -54,25 +55,13 @@ func WriteTable(w io.Writer, prs []github.PullRequest) error {
 	return tp.Render()
 }
 
-// sourceOf derives a SOURCE label from the review requests on pr.
-// Returns "direct" if any non-CODEOWNERS user request exists,
-// "team" if any non-CODEOWNERS team request exists, or "codeowner" otherwise.
-func sourceOf(pr github.PullRequest) string {
-	hasTeam := false
-	for _, rr := range pr.ReviewRequests.Nodes {
-		if !rr.AsCodeOwner {
-			switch rr.RequestedReviewer.Type {
-			case "User":
-				return "direct"
-			case "Team":
-				hasTeam = true
-			}
-		}
+// sourceLabel converts a Source to its display string.
+// An empty Source (from PassthroughClassifier) renders as "-".
+func sourceLabel(s service.Source) string {
+	if s == "" {
+		return "-"
 	}
-	if hasTeam {
-		return "team"
-	}
-	return "codeowner"
+	return string(s)
 }
 
 // sourceColor returns an ANSI color function for the given source label.
@@ -83,7 +72,7 @@ func sourceColor(source string) func(string) string {
 		return func(s string) string { return "\033[32m" + s + "\033[0m" } // green
 	case "team":
 		return func(s string) string { return "\033[33m" + s + "\033[0m" } // yellow
-	default: // codeowner
+	default: // codeowner or "-"
 		return func(s string) string { return "\033[36m" + s + "\033[0m" } // cyan
 	}
 }
