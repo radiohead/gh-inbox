@@ -93,7 +93,9 @@ func (s *TeamService) SharesTeamWith(org, otherLogin string) bool {
 
 // IsSiblingTeamMember reports whether login is a member of any sibling team
 // (child of the same parent) of any team the authenticated user belongs to
-// within org. Returns false on any error (fail-closed).
+// within org. A FetchChildTeams error for one parent is non-fatal: the loop
+// continues checking remaining parents so that positive evidence from other
+// independently-checkable teams is not discarded.
 func (s *TeamService) IsSiblingTeamMember(org, login string) bool {
 	teams := s.loadMyTeams()
 	if teams == nil {
@@ -109,7 +111,7 @@ func (s *TeamService) IsSiblingTeamMember(org, login string) bool {
 			var err error
 			children, err = s.fetcher.FetchChildTeams(org, t.Parent.Slug)
 			if err != nil {
-				return false // fail-closed
+				continue // non-fatal: keep checking other parents
 			}
 			s.childCache[parentKey] = children
 		}

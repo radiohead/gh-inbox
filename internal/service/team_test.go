@@ -275,7 +275,7 @@ func TestIsSiblingTeamMember(t *testing.T) {
 			want:  false,
 		},
 		{
-			name: "FetchChildTeams error: fail-closed",
+			name: "FetchChildTeams error for single parent: returns false",
 			myTeams: []github.UserTeam{
 				{
 					Slug:         "backend",
@@ -420,6 +420,47 @@ func TestIsOrgMemberCaching(t *testing.T) {
 	}
 	if callCount != 1 {
 		t.Errorf("FetchIsOrgMember called %d times, want 1 (cache should prevent second call)", callCount)
+	}
+}
+
+// TestIsSiblingTeamMemberPartialChildFetchError verifies that a FetchChildTeams
+// error for one parent does not prevent the check from succeeding via another
+// parent whose fetch succeeds and whose siblings include the target login.
+func TestIsSiblingTeamMemberPartialChildFetchError(t *testing.T) {
+	fetcher := &mockFetcher{
+		myTeamsFunc: func() ([]github.UserTeam, error) {
+			return []github.UserTeam{
+				{
+					// first parent — fetch will fail
+					Slug:         "backend",
+					Organization: github.TeamOrganization{Login: "acme"},
+					Parent:       &github.ParentTeam{Slug: "platform"},
+				},
+				{
+					// second parent — fetch succeeds, sibling "ops" contains "bob"
+					Slug:         "sre",
+					Organization: github.TeamOrganization{Login: "acme"},
+					Parent:       &github.ParentTeam{Slug: "infra"},
+				},
+			}, nil
+		},
+		childTeamsFunc: func(org, parentSlug string) ([]github.ChildTeam, error) {
+			if parentSlug == "platform" {
+				return nil, errors.New("transient API error")
+			}
+			// infra has sre + ops
+			return []github.ChildTeam{{Slug: "sre"}, {Slug: "ops"}}, nil
+		},
+		fetchFunc: func(org, slug string) ([]github.TeamMember, error) {
+			if slug == "ops" {
+				return []github.TeamMember{{Login: "bob"}}, nil
+			}
+			return nil, nil
+		},
+	}
+	svc := NewTeamService(fetcher)
+	if !svc.IsSiblingTeamMember("acme", "bob") {
+		t.Error("IsSiblingTeamMember = false, want true: positive evidence from second parent should not be discarded")
 	}
 }
 
