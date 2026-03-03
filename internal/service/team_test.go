@@ -120,6 +120,7 @@ func TestSharesTeamWith(t *testing.T) {
 		myTeams    []github.UserTeam
 		myTeamsErr error
 		members    map[string][]github.TeamMember // "org/slug" -> members
+		membersErr error                          // if non-nil, FetchTeamMembers returns this error
 		org        string
 		other      string
 		want       bool
@@ -159,8 +160,18 @@ func TestSharesTeamWith(t *testing.T) {
 			want:    false,
 		},
 		{
-			name:       "fetch error: fail-closed returns false",
+			name:       "FetchMyTeams error: fail-closed returns false",
 			myTeamsErr: errors.New("unauthorized"),
+			org:        "acme",
+			other:      "john",
+			want:       false,
+		},
+		{
+			name: "FetchTeamMembers error: fail-closed returns false",
+			myTeams: []github.UserTeam{
+				{Slug: "backend", Organization: github.TeamOrganization{Login: "acme"}},
+			},
+			membersErr: errors.New("API error"),
 			org:        "acme",
 			other:      "john",
 			want:       false,
@@ -171,6 +182,9 @@ func TestSharesTeamWith(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			fetcher := &mockFetcher{
 				fetchFunc: func(org, slug string) ([]github.TeamMember, error) {
+					if tt.membersErr != nil {
+						return nil, tt.membersErr
+					}
 					key := org + "/" + slug
 					if m, ok := tt.members[key]; ok {
 						return m, nil
@@ -222,6 +236,7 @@ func TestIsSiblingTeamMember(t *testing.T) {
 		name       string
 		myTeams    []github.UserTeam
 		members    map[string][]github.TeamMember
+		membersErr error                          // if non-nil, FetchTeamMembers returns this error
 		childTeams map[string][]github.ChildTeam // "org/parentSlug" -> children
 		org        string
 		login      string
@@ -274,6 +289,23 @@ func TestIsSiblingTeamMember(t *testing.T) {
 			want:       false,
 		},
 		{
+			name: "FetchTeamMembers error: fail-closed",
+			myTeams: []github.UserTeam{
+				{
+					Slug:         "backend",
+					Organization: github.TeamOrganization{Login: "acme"},
+					Parent:       &github.ParentTeam{Slug: "platform"},
+				},
+			},
+			childTeams: map[string][]github.ChildTeam{
+				"acme/platform": {{Slug: "backend"}, {Slug: "frontend"}},
+			},
+			membersErr: errors.New("API error"),
+			org:        "acme",
+			login:      "bob",
+			want:       false,
+		},
+		{
 			name: "author not in any sibling team",
 			myTeams: []github.UserTeam{
 				{
@@ -298,6 +330,9 @@ func TestIsSiblingTeamMember(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			fetcher := &mockFetcher{
 				fetchFunc: func(org, slug string) ([]github.TeamMember, error) {
+					if tt.membersErr != nil {
+						return nil, tt.membersErr
+					}
 					key := org + "/" + slug
 					if m, ok := tt.members[key]; ok {
 						return m, nil
@@ -362,5 +397,66 @@ func TestIsOrgMember(t *testing.T) {
 				t.Errorf("IsOrgMember = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestIsOrgMemberCaching(t *testing.T) {
+	callCount := 0
+	fetcher := &mockFetcher{
+		fetchFunc: func(org, slug string) ([]github.TeamMember, error) { return nil, nil },
+		isOrgMemberFunc: func(org, login string) (bool, error) {
+			callCount++
+			return true, nil
+		},
+	}
+	svc := NewTeamService(fetcher)
+
+	// Two calls for the same org/login — FetchIsOrgMember should only be called once.
+	got1 := svc.IsOrgMember("acme", "bob")
+	got2 := svc.IsOrgMember("acme", "bob")
+
+	if !got1 || !got2 {
+		t.Errorf("IsOrgMember = %v, %v; want both true", got1, got2)
+	}
+	if callCount != 1 {
+		t.Errorf("FetchIsOrgMember called %d times, want 1 (cache should prevent second call)", callCount)
+	}
+}
+
+func TestIsSiblingTeamMemberChildCaching(t *testing.T) {
+	childCallCount := 0
+	fetcher := &mockFetcher{
+		fetchFunc: func(org, slug string) ([]github.TeamMember, error) {
+			// frontend has carol, backend has alice
+			switch org + "/" + slug {
+			case "acme/frontend":
+				return []github.TeamMember{{Login: "carol"}}, nil
+			case "acme/backend":
+				return []github.TeamMember{{Login: "alice"}}, nil
+			}
+			return nil, nil
+		},
+		myTeamsFunc: func() ([]github.UserTeam, error) {
+			return []github.UserTeam{
+				{
+					Slug:         "backend",
+					Organization: github.TeamOrganization{Login: "acme"},
+					Parent:       &github.ParentTeam{Slug: "platform"},
+				},
+			}, nil
+		},
+		childTeamsFunc: func(org, parentSlug string) ([]github.ChildTeam, error) {
+			childCallCount++
+			return []github.ChildTeam{{Slug: "backend"}, {Slug: "frontend"}}, nil
+		},
+	}
+	svc := NewTeamService(fetcher)
+
+	// Two calls — FetchChildTeams should only be called once per unique parent.
+	svc.IsSiblingTeamMember("acme", "carol")
+	svc.IsSiblingTeamMember("acme", "dave")
+
+	if childCallCount != 1 {
+		t.Errorf("FetchChildTeams called %d times, want 1 (cache should prevent second call)", childCallCount)
 	}
 }

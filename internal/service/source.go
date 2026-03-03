@@ -16,16 +16,20 @@ const (
 // ClassifyAuthorSource returns the author source classification for a PR.
 //
 // Precedence:
-//  1. Empty author or self -> TEAM (own PRs are treated as team-level).
-//  2. Author shares a direct team -> TEAM.
-//  3. Author is in a sibling team (child of the same parent) -> GROUP.
-//  4. Author is in the same org -> ORG.
-//  5. Otherwise -> OTHER.
+//  1. Empty/unknown author -> OTHER (fail-closed: unknown identity is not promoted).
+//  2. Self-authored PR -> TEAM.
+//  3. Author shares a direct team -> TEAM.
+//  4. Author is in a sibling team (child of the same parent) -> GROUP.
+//  5. Author is in the same org -> ORG.
+//  6. Otherwise -> OTHER.
 func ClassifyAuthorSource(pr github.PullRequest, myLogin string, teams *TeamService) AuthorSource {
 	author := pr.Author
 	org := pr.Repository.Owner
 
-	if author == "" || author == myLogin {
+	if author == "" {
+		return AuthorSourceOther
+	}
+	if author == myLogin {
 		return AuthorSourceTeam
 	}
 	if teams.SharesTeamWith(org, author) {

@@ -34,7 +34,7 @@ func TestClassifyAuthorSource(t *testing.T) {
 				Repository: github.Repository{Owner: "org", Name: "repo"},
 			},
 			myLogin: "alice",
-			want:    AuthorSourceTeam,
+			want:    AuthorSourceOther,
 		},
 		{
 			name: "author shares direct team",
