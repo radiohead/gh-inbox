@@ -21,6 +21,9 @@ type searchPRNode struct {
 	Title     string
 	URL       string
 	CreatedAt time.Time
+	Author    struct {
+		Login string
+	} `graphql:"author"`
 	Repository struct {
 		NameWithOwner string
 	}

@@ -22,15 +22,15 @@ const (
 	ModeTeam
 )
 
-// modeToSource maps a filter Mode to its corresponding Source.
-func modeToSource(m Mode) Source {
+// modeToReviewType maps a filter Mode to its corresponding ReviewType.
+func modeToReviewType(m Mode) ReviewType {
 	switch m {
 	case ModeDirect:
-		return SourceDirect
+		return ReviewTypeDirect
 	case ModeTeam:
-		return SourceTeam
+		return ReviewTypeTeam
 	case ModeCodeowner:
-		return SourceCodeowner
+		return ReviewTypeCodeowner
 	default:
 		return "" // ModeAll handled before this is called
 	}

@@ -56,11 +56,20 @@ var reviewCmd = &cobra.Command{
 
 		switch outputFormat {
 		case "json":
-			prs := make([]github.PullRequest, len(results))
-			for i, cp := range results {
-				prs[i] = cp.PR
+			type jsonPR struct {
+				github.PullRequest
+				ReviewType string `json:"reviewType,omitempty"`
+				Source     string `json:"source,omitempty"`
 			}
-			return output.WriteJSON(cmd.OutOrStdout(), prs)
+			out := make([]jsonPR, len(results))
+			for i, cp := range results {
+				out[i] = jsonPR{
+					PullRequest: cp.PR,
+					ReviewType:  string(cp.ReviewType),
+					Source:      string(cp.AuthorSource),
+				}
+			}
+			return output.WriteJSON(cmd.OutOrStdout(), out)
 		case "table", "":
 			return output.WriteTable(cmd.OutOrStdout(), results)
 		default:
@@ -70,12 +79,9 @@ var reviewCmd = &cobra.Command{
 }
 
 // needsUserContext reports whether user/team lookups are required.
-// They are needed for non-all filters and for table source labeling.
+// They are needed for classification (review type + author source labeling).
 func needsUserContext(mode service.Mode, output string) bool {
-	if mode != service.ModeAll {
-		return true
-	}
-	return output == "table" || output == ""
+	return true
 }
 
 func init() {

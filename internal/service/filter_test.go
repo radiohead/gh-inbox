@@ -74,17 +74,17 @@ func TestClassify(t *testing.T) {
 		myLogin string
 		members map[string][]github.TeamMember
 		myTeams []github.UserTeam
-		want    Source
+		want    ReviewType
 	}{
 		{
-			name:    "sole User reviewer — SourceDirect",
+			name:    "sole User reviewer — ReviewTypeDirect",
 			pr:      buildPR("org/repo", []github.ReviewRequest{userReq("alice")}),
 			myLogin: "alice",
-			want:    SourceDirect,
+			want:    ReviewTypeDirect,
 		},
 		{
 			// KEY CASE: direct wins over team — me(User) + my team both requested
-			name: "User(me) + Team(my-team) — SourceDirect (direct wins)",
+			name: "User(me) + Team(my-team) — ReviewTypeDirect (direct wins)",
 			pr: buildPR("org/repo", []github.ReviewRequest{
 				userReq("alice"), teamReq("backend"),
 			}),
@@ -95,11 +95,11 @@ func TestClassify(t *testing.T) {
 			myTeams: []github.UserTeam{
 				{Slug: "backend", Organization: github.TeamOrganization{Login: "org"}},
 			},
-			want: SourceDirect,
+			want: ReviewTypeDirect,
 		},
 		{
-			// only team requested, no individual user me → SourceTeam
-			name: "only Team (mine), no User me — SourceTeam",
+			// only team requested, no individual user me → ReviewTypeTeam
+			name: "only Team (mine), no User me — ReviewTypeTeam",
 			pr: buildPR("org/repo", []github.ReviewRequest{
 				teamReq("backend"),
 			}),
@@ -110,11 +110,11 @@ func TestClassify(t *testing.T) {
 			myTeams: []github.UserTeam{
 				{Slug: "backend", Organization: github.TeamOrganization{Login: "org"}},
 			},
-			want: SourceTeam,
+			want: ReviewTypeTeam,
 		},
 		{
 			// me + teammate(User) → not direct (teammate present), not team (no team req) → codeowner
-			name: "User(me) + teammate(User) — SourceCodeowner",
+			name: "User(me) + teammate(User) — ReviewTypeCodeowner",
 			pr: buildPR("org/repo", []github.ReviewRequest{
 				userReq("alice"), userReq("bob"),
 			}),
@@ -125,17 +125,17 @@ func TestClassify(t *testing.T) {
 			myTeams: []github.UserTeam{
 				{Slug: "myteam", Organization: github.TeamOrganization{Login: "org"}},
 			},
-			want: SourceCodeowner,
+			want: ReviewTypeCodeowner,
 		},
 		{
-			name:    "empty requests — SourceCodeowner",
+			name:    "empty requests — ReviewTypeCodeowner",
 			pr:      buildPR("org/repo", []github.ReviewRequest{}),
 			myLogin: "alice",
-			want:    SourceCodeowner,
+			want:    ReviewTypeCodeowner,
 		},
 		{
-			// me + non-teammate + my team → me(User) direct (carol not a teammate) → SourceDirect
-			name: "User(me) + non-teammate + Team(mine) — SourceDirect",
+			// me + non-teammate + my team → me(User) direct (carol not a teammate) → ReviewTypeDirect
+			name: "User(me) + non-teammate + Team(mine) — ReviewTypeDirect",
 			pr: buildPR("org/repo", []github.ReviewRequest{
 				userReq("alice"), userReq("carol"), teamReq("backend"),
 			}),
@@ -147,11 +147,11 @@ func TestClassify(t *testing.T) {
 			myTeams: []github.UserTeam{
 				{Slug: "myteam", Organization: github.TeamOrganization{Login: "org"}},
 			},
-			want: SourceDirect,
+			want: ReviewTypeDirect,
 		},
 		{
-			// only a team that is NOT mine → neither direct nor team → SourceCodeowner
-			name: "only Team (not mine) — SourceCodeowner",
+			// only a team that is NOT mine → neither direct nor team → ReviewTypeCodeowner
+			name: "only Team (not mine) — ReviewTypeCodeowner",
 			pr: buildPR("org/repo", []github.ReviewRequest{
 				teamReq("frontend"),
 			}),
@@ -159,7 +159,7 @@ func TestClassify(t *testing.T) {
 			members: map[string][]github.TeamMember{
 				"org/frontend": {{Login: "bob"}},
 			},
-			want: SourceCodeowner,
+			want: ReviewTypeCodeowner,
 		},
 	}
 

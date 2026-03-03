@@ -9,9 +9,11 @@ import (
 
 // mockFetcher is a test double for TeamMemberFetcher.
 type mockFetcher struct {
-	fetchFunc   func(org, slug string) ([]github.TeamMember, error)
-	myTeamsFunc func() ([]github.UserTeam, error)
-	callCount   int
+	fetchFunc       func(org, slug string) ([]github.TeamMember, error)
+	myTeamsFunc     func() ([]github.UserTeam, error)
+	childTeamsFunc  func(org, parentSlug string) ([]github.ChildTeam, error)
+	isOrgMemberFunc func(org, login string) (bool, error)
+	callCount       int
 }
 
 func (m *mockFetcher) FetchTeamMembers(org, slug string) ([]github.TeamMember, error) {
@@ -24,6 +26,20 @@ func (m *mockFetcher) FetchMyTeams() ([]github.UserTeam, error) {
 		return m.myTeamsFunc()
 	}
 	return nil, nil
+}
+
+func (m *mockFetcher) FetchChildTeams(org, parentSlug string) ([]github.ChildTeam, error) {
+	if m.childTeamsFunc != nil {
+		return m.childTeamsFunc(org, parentSlug)
+	}
+	return nil, nil
+}
+
+func (m *mockFetcher) FetchIsOrgMember(org, login string) (bool, error) {
+	if m.isOrgMemberFunc != nil {
+		return m.isOrgMemberFunc(org, login)
+	}
+	return false, nil
 }
 
 func TestIsTeamMember(t *testing.T) {
@@ -198,5 +214,153 @@ func TestSharesTeamWithCaching(t *testing.T) {
 
 	if callCount != 1 {
 		t.Errorf("FetchMyTeams called %d times, want 1", callCount)
+	}
+}
+
+func TestIsSiblingTeamMember(t *testing.T) {
+	tests := []struct {
+		name       string
+		myTeams    []github.UserTeam
+		members    map[string][]github.TeamMember
+		childTeams map[string][]github.ChildTeam // "org/parentSlug" -> children
+		org        string
+		login      string
+		want       bool
+	}{
+		{
+			name: "author in sibling team",
+			myTeams: []github.UserTeam{
+				{
+					Slug:         "backend",
+					Organization: github.TeamOrganization{Login: "acme"},
+					Parent:       &github.ParentTeam{Slug: "platform"},
+				},
+			},
+			members: map[string][]github.TeamMember{
+				"acme/frontend": {{Login: "bob"}},
+			},
+			childTeams: map[string][]github.ChildTeam{
+				"acme/platform": {{Slug: "backend"}, {Slug: "frontend"}},
+			},
+			org:   "acme",
+			login: "bob",
+			want:  true,
+		},
+		{
+			name: "my team has no parent",
+			myTeams: []github.UserTeam{
+				{
+					Slug:         "backend",
+					Organization: github.TeamOrganization{Login: "acme"},
+					// no Parent
+				},
+			},
+			org:   "acme",
+			login: "bob",
+			want:  false,
+		},
+		{
+			name: "FetchChildTeams error: fail-closed",
+			myTeams: []github.UserTeam{
+				{
+					Slug:         "backend",
+					Organization: github.TeamOrganization{Login: "acme"},
+					Parent:       &github.ParentTeam{Slug: "platform"},
+				},
+			},
+			childTeams: nil, // will cause error path
+			org:        "acme",
+			login:      "bob",
+			want:       false,
+		},
+		{
+			name: "author not in any sibling team",
+			myTeams: []github.UserTeam{
+				{
+					Slug:         "backend",
+					Organization: github.TeamOrganization{Login: "acme"},
+					Parent:       &github.ParentTeam{Slug: "platform"},
+				},
+			},
+			members: map[string][]github.TeamMember{
+				"acme/frontend": {{Login: "carol"}},
+			},
+			childTeams: map[string][]github.ChildTeam{
+				"acme/platform": {{Slug: "backend"}, {Slug: "frontend"}},
+			},
+			org:   "acme",
+			login: "bob",
+			want:  false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fetcher := &mockFetcher{
+				fetchFunc: func(org, slug string) ([]github.TeamMember, error) {
+					key := org + "/" + slug
+					if m, ok := tt.members[key]; ok {
+						return m, nil
+					}
+					return nil, nil
+				},
+				myTeamsFunc: func() ([]github.UserTeam, error) {
+					return tt.myTeams, nil
+				},
+				childTeamsFunc: func(org, parentSlug string) ([]github.ChildTeam, error) {
+					key := org + "/" + parentSlug
+					if tt.childTeams == nil {
+						return nil, errors.New("child teams error")
+					}
+					if c, ok := tt.childTeams[key]; ok {
+						return c, nil
+					}
+					return nil, nil
+				},
+			}
+			svc := NewTeamService(fetcher)
+			got := svc.IsSiblingTeamMember(tt.org, tt.login)
+			if got != tt.want {
+				t.Errorf("IsSiblingTeamMember(%q, %q) = %v, want %v", tt.org, tt.login, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsOrgMember(t *testing.T) {
+	tests := []struct {
+		name string
+		fn   func(org, login string) (bool, error)
+		want bool
+	}{
+		{
+			name: "member",
+			fn:   func(org, login string) (bool, error) { return true, nil },
+			want: true,
+		},
+		{
+			name: "non-member",
+			fn:   func(org, login string) (bool, error) { return false, nil },
+			want: false,
+		},
+		{
+			name: "error: fail-closed",
+			fn:   func(org, login string) (bool, error) { return false, errors.New("network") },
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fetcher := &mockFetcher{
+				fetchFunc:       func(org, slug string) ([]github.TeamMember, error) { return nil, nil },
+				isOrgMemberFunc: tt.fn,
+			}
+			svc := NewTeamService(fetcher)
+			got := svc.IsOrgMember("acme", "bob")
+			if got != tt.want {
+				t.Errorf("IsOrgMember = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }

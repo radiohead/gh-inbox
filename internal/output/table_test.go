@@ -24,7 +24,7 @@ func TestWriteTable_tabSeparated(t *testing.T) {
 	now := time.Now()
 	prs := []service.ClassifiedPR{
 		{
-			Source: service.SourceDirect,
+			ReviewType: service.ReviewTypeDirect,
 			PR: github.PullRequest{
 				Number:    42,
 				Title:     "Fix the bug",
@@ -54,7 +54,7 @@ func TestWriteTable_tabSeparated(t *testing.T) {
 		t.Errorf("expected URL in output, got: %q", out)
 	}
 	if !strings.Contains(out, "direct") {
-		t.Errorf("expected source=direct in output, got: %q", out)
+		t.Errorf("expected reviewType=direct in output, got: %q", out)
 	}
 	if !strings.Contains(out, "2d") {
 		t.Errorf("expected age=2d in output, got: %q", out)
@@ -80,16 +80,16 @@ func TestWriteTable_emptySourceRenderedAsDash(t *testing.T) {
 		t.Fatalf("WriteTable unexpected error: %v", err)
 	}
 	if !strings.Contains(buf.String(), "-") {
-		t.Errorf("expected source=- for empty Source, got: %q", buf.String())
+		t.Errorf("expected reviewType=- for empty ReviewType, got: %q", buf.String())
 	}
 }
 
 func TestWriteTable_sortsByAgeOldestFirst(t *testing.T) {
 	now := time.Now()
 	prs := []service.ClassifiedPR{
-		{Source: service.SourceDirect, PR: github.PullRequest{Number: 1, Title: "newest", URL: "https://github.com/acme/api/pull/1", CreatedAt: now.Add(-1 * 24 * time.Hour), Repository: github.Repository{Owner: "acme", Name: "api"}}},
-		{Source: service.SourceDirect, PR: github.PullRequest{Number: 3, Title: "oldest", URL: "https://github.com/acme/api/pull/3", CreatedAt: now.Add(-10 * 24 * time.Hour), Repository: github.Repository{Owner: "acme", Name: "api"}}},
-		{Source: service.SourceDirect, PR: github.PullRequest{Number: 2, Title: "middle", URL: "https://github.com/acme/api/pull/2", CreatedAt: now.Add(-5 * 24 * time.Hour), Repository: github.Repository{Owner: "acme", Name: "api"}}},
+		{ReviewType: service.ReviewTypeDirect, PR: github.PullRequest{Number: 1, Title: "newest", URL: "https://github.com/acme/api/pull/1", CreatedAt: now.Add(-1 * 24 * time.Hour), Repository: github.Repository{Owner: "acme", Name: "api"}}},
+		{ReviewType: service.ReviewTypeDirect, PR: github.PullRequest{Number: 3, Title: "oldest", URL: "https://github.com/acme/api/pull/3", CreatedAt: now.Add(-10 * 24 * time.Hour), Repository: github.Repository{Owner: "acme", Name: "api"}}},
+		{ReviewType: service.ReviewTypeDirect, PR: github.PullRequest{Number: 2, Title: "middle", URL: "https://github.com/acme/api/pull/2", CreatedAt: now.Add(-5 * 24 * time.Hour), Repository: github.Repository{Owner: "acme", Name: "api"}}},
 	}
 
 	var buf bytes.Buffer

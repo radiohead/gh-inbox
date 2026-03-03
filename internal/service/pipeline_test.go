@@ -41,10 +41,10 @@ func TestSourceClassifier(t *testing.T) {
 		t.Fatalf("ClassifyAll returned %d results, want 3", len(got))
 	}
 
-	cases := []Source{SourceDirect, SourceCodeowner, SourceTeam}
+	cases := []ReviewType{ReviewTypeDirect, ReviewTypeCodeowner, ReviewTypeTeam}
 	for i, want := range cases {
-		if got[i].Source != want {
-			t.Errorf("[%d] Source = %q, want %q", i, got[i].Source, want)
+		if got[i].ReviewType != want {
+			t.Errorf("[%d] ReviewType = %q, want %q", i, got[i].ReviewType, want)
 		}
 		if got[i].PR.Number != prs[i].Number {
 			t.Errorf("[%d] PR.Number = %d, want %d", i, got[i].PR.Number, prs[i].Number)
@@ -62,27 +62,27 @@ func TestPassthroughClassifier(t *testing.T) {
 		t.Fatalf("ClassifyAll returned %d results, want 2", len(got))
 	}
 	for i, cp := range got {
-		if cp.Source != "" {
-			t.Errorf("[%d] Source = %q, want empty", i, cp.Source)
+		if cp.ReviewType != "" {
+			t.Errorf("[%d] ReviewType = %q, want empty", i, cp.ReviewType)
 		}
 	}
 }
 
 func TestModeFilter(t *testing.T) {
-	direct := ClassifiedPR{PR: buildPR("org/a", nil), Source: SourceDirect}
-	team := ClassifiedPR{PR: buildPR("org/b", nil), Source: SourceTeam}
-	codeowner := ClassifiedPR{PR: buildPR("org/c", nil), Source: SourceCodeowner}
+	direct := ClassifiedPR{PR: buildPR("org/a", nil), ReviewType: ReviewTypeDirect}
+	team := ClassifiedPR{PR: buildPR("org/b", nil), ReviewType: ReviewTypeTeam}
+	codeowner := ClassifiedPR{PR: buildPR("org/c", nil), ReviewType: ReviewTypeCodeowner}
 	all := []ClassifiedPR{direct, team, codeowner}
 
 	tests := []struct {
 		mode      Mode
 		wantCount int
-		wantSrc   Source
+		wantSrc   ReviewType
 	}{
 		{ModeAll, 3, ""},
-		{ModeDirect, 1, SourceDirect},
-		{ModeTeam, 1, SourceTeam},
-		{ModeCodeowner, 1, SourceCodeowner},
+		{ModeDirect, 1, ReviewTypeDirect},
+		{ModeTeam, 1, ReviewTypeTeam},
+		{ModeCodeowner, 1, ReviewTypeCodeowner},
 	}
 
 	for _, tt := range tests {
@@ -94,8 +94,8 @@ func TestModeFilter(t *testing.T) {
 		}
 		if tt.mode != ModeAll {
 			for _, cp := range got {
-				if cp.Source != tt.wantSrc {
-					t.Errorf("ModeFilter{%v}: got Source=%q, want %q", tt.mode, cp.Source, tt.wantSrc)
+				if cp.ReviewType != tt.wantSrc {
+					t.Errorf("ModeFilter{%v}: got Source=%q, want %q", tt.mode, cp.ReviewType, tt.wantSrc)
 				}
 			}
 		}
@@ -104,9 +104,9 @@ func TestModeFilter(t *testing.T) {
 
 func TestModeFilterPartition(t *testing.T) {
 	// The three non-all modes partition the input exhaustively and non-overlapping.
-	direct := ClassifiedPR{PR: buildPR("org/a", nil), Source: SourceDirect}
-	team := ClassifiedPR{PR: buildPR("org/b", nil), Source: SourceTeam}
-	codeowner := ClassifiedPR{PR: buildPR("org/c", nil), Source: SourceCodeowner}
+	direct := ClassifiedPR{PR: buildPR("org/a", nil), ReviewType: ReviewTypeDirect}
+	team := ClassifiedPR{PR: buildPR("org/b", nil), ReviewType: ReviewTypeTeam}
+	codeowner := ClassifiedPR{PR: buildPR("org/c", nil), ReviewType: ReviewTypeCodeowner}
 	all := []ClassifiedPR{direct, team, codeowner}
 
 	d := (&ModeFilter{Mode: ModeDirect}).Apply(all)
@@ -146,8 +146,8 @@ func TestPipelineRun(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("Run() returned %d PRs, want 1", len(got))
 	}
-	if got[0].Source != SourceDirect {
-		t.Errorf("Run() got[0].Source = %q, want %q", got[0].Source, SourceDirect)
+	if got[0].ReviewType != ReviewTypeDirect {
+		t.Errorf("Run() got[0].ReviewType = %q, want %q", got[0].ReviewType, ReviewTypeDirect)
 	}
 }
 

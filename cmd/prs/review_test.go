@@ -48,7 +48,7 @@ func TestNeedsUserContext(t *testing.T) {
 		output string
 		want   bool
 	}{
-		{name: "mode all json", mode: service.ModeAll, output: "json", want: false},
+		{name: "mode all json", mode: service.ModeAll, output: "json", want: true},
 		{name: "mode all table", mode: service.ModeAll, output: "table", want: true},
 		{name: "mode all empty output defaults table", mode: service.ModeAll, output: "", want: true},
 		{name: "mode direct json", mode: service.ModeDirect, output: "json", want: true},

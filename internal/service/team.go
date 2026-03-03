@@ -7,6 +7,8 @@ import "github.com/radiohead/gh-inbox/internal/github"
 type TeamMemberFetcher interface {
 	FetchTeamMembers(org, slug string) ([]github.TeamMember, error)
 	FetchMyTeams() ([]github.UserTeam, error)
+	FetchChildTeams(org, parentSlug string) ([]github.ChildTeam, error)
+	FetchIsOrgMember(org, login string) (bool, error)
 }
 
 // TeamService provides team membership queries with in-process caching.
@@ -65,6 +67,41 @@ func (s *TeamService) SharesTeamWith(org, otherLogin string) bool {
 		}
 	}
 	return false
+}
+
+// IsSiblingTeamMember reports whether login is a member of any sibling team
+// (child of the same parent) of any team the authenticated user belongs to
+// within org. Returns false on any error (fail-closed).
+func (s *TeamService) IsSiblingTeamMember(org, login string) bool {
+	teams := s.loadMyTeams()
+	if teams == nil {
+		return false
+	}
+	for _, t := range teams {
+		if t.Organization.Login != org || t.Parent == nil {
+			continue
+		}
+		children, err := s.fetcher.FetchChildTeams(org, t.Parent.Slug)
+		if err != nil {
+			return false // fail-closed
+		}
+		for _, child := range children {
+			if child.Slug == t.Slug {
+				continue // skip own team
+			}
+			if s.IsTeamMember(org, child.Slug, login) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// IsOrgMember reports whether login is a member of the given organization.
+// Returns false on any error (fail-closed).
+func (s *TeamService) IsOrgMember(org, login string) bool {
+	ok, err := s.fetcher.FetchIsOrgMember(org, login)
+	return err == nil && ok
 }
 
 // loadMyTeams fetches and caches the authenticated user's teams.

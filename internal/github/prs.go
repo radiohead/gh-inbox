@@ -56,6 +56,7 @@ func convertSearchPRNode(n searchPRNode) PullRequest {
 		Number:    n.Number,
 		Title:     n.Title,
 		URL:       n.URL,
+		Author:    n.Author.Login,
 		CreatedAt: n.CreatedAt,
 		Repository: Repository{
 			Owner: owner,
