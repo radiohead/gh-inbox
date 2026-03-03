@@ -31,7 +31,7 @@ var (
 	_ Fetcher    = FetchFunc(nil)
 	_ Classifier = (*SourceClassifier)(nil)
 	_ Classifier = PassthroughClassifier{}
-	_ PRFilter   = (*ModeFilter)(nil)
+	_ PRFilter   = (*CriteriaFilter)(nil)
 )
 
 // FetchFunc is a function adapter implementing Fetcher.
@@ -62,7 +62,7 @@ func (c *SourceClassifier) ClassifyAll(prs []github.PullRequest) []ClassifiedPR 
 }
 
 // PassthroughClassifier wraps PRs with an empty ReviewType — used when
-// classification is not required (e.g. ModeAll + JSON output).
+// classification is not required.
 type PassthroughClassifier struct{}
 
 // ClassifyAll wraps each PR with an empty ReviewType.
@@ -70,27 +70,6 @@ func (PassthroughClassifier) ClassifyAll(prs []github.PullRequest) []ClassifiedP
 	result := make([]ClassifiedPR, len(prs))
 	for i, pr := range prs {
 		result[i] = ClassifiedPR{PR: pr}
-	}
-	return result
-}
-
-// ModeFilter keeps only PRs whose ReviewType matches the configured mode.
-// ModeAll passes all PRs through without inspecting ReviewType.
-type ModeFilter struct {
-	Mode Mode
-}
-
-// Apply returns the subset of prs matching the configured mode.
-func (f *ModeFilter) Apply(prs []ClassifiedPR) []ClassifiedPR {
-	if f.Mode == ModeAll {
-		return prs
-	}
-	target := modeToReviewType(f.Mode)
-	result := make([]ClassifiedPR, 0, len(prs))
-	for _, cp := range prs {
-		if cp.ReviewType == target {
-			result = append(result, cp)
-		}
 	}
 	return result
 }

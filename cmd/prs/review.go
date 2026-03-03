@@ -2,6 +2,7 @@ package prs
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -11,8 +12,10 @@ import (
 )
 
 type reviewOptions struct {
-	org        string
-	filterMode string
+	org          string
+	filter       string
+	filterType   string
+	filterSource string
 }
 
 var reviewOpts reviewOptions
@@ -21,7 +24,7 @@ var reviewCmd = &cobra.Command{
 	Use:   "review",
 	Short: "Show PRs awaiting my review",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		mode, err := parseFilterMode(reviewOpts.filterMode)
+		criteria, err := resolveFilter(reviewOpts.filter, reviewOpts.filterType, reviewOpts.filterSource)
 		if err != nil {
 			return err
 		}
@@ -31,22 +34,17 @@ var reviewCmd = &cobra.Command{
 			return fmt.Errorf("creating GitHub client: %w", err)
 		}
 
-		var classifier service.Classifier
-		if needsUserContext(mode, outputFormat) {
-			login, err := client.FetchCurrentUser()
-			if err != nil {
-				return fmt.Errorf("fetching current user: %w", err)
-			}
-			svc := service.NewTeamService(client)
-			classifier = &service.SourceClassifier{Login: login, Teams: svc}
-		} else {
-			classifier = service.PassthroughClassifier{}
+		login, err := client.FetchCurrentUser()
+		if err != nil {
+			return fmt.Errorf("fetching current user: %w", err)
 		}
+		svc := service.NewTeamService(client)
+		classifier := &service.SourceClassifier{Login: login, Teams: svc}
 
 		pipeline := service.NewPipeline(
 			service.FetchFunc(client.FetchReviewRequestedPRs),
 			classifier,
-			&service.ModeFilter{Mode: mode},
+			&service.CriteriaFilter{Criteria: criteria},
 		)
 
 		results, err := pipeline.Run(reviewOpts.org)
@@ -78,29 +76,57 @@ var reviewCmd = &cobra.Command{
 	},
 }
 
-// needsUserContext reports whether user/team lookups are required.
-// They are needed for classification (review type + author source labeling).
-func needsUserContext(mode service.Mode, output string) bool {
-	return true
-}
-
 func init() {
 	reviewCmd.Flags().StringVar(&reviewOpts.org, "org", "", "GitHub organization to filter by (default: all orgs)")
-	reviewCmd.Flags().StringVar(&reviewOpts.filterMode, "filter", "all", "Filter mode: all|direct|codeowner|team")
+	reviewCmd.Flags().StringVar(&reviewOpts.filter, "filter", "", "Filter preset: all|focus|nearby|org (default: all)")
+	reviewCmd.Flags().StringVar(&reviewOpts.filterType, "filter-type", "", "Filter by review type: direct|codeowner|team")
+	reviewCmd.Flags().StringVar(&reviewOpts.filterSource, "filter-source", "", "Filter by author source: TEAM|GROUP|ORG|OTHER")
+	reviewCmd.MarkFlagsMutuallyExclusive("filter", "filter-type")
+	reviewCmd.MarkFlagsMutuallyExclusive("filter", "filter-source")
 }
 
-// parseFilterMode converts a filter flag string to a service.Mode.
-func parseFilterMode(s string) (service.Mode, error) {
-	switch s {
-	case "all", "":
-		return service.ModeAll, nil
-	case "direct":
-		return service.ModeDirect, nil
-	case "codeowner":
-		return service.ModeCodeowner, nil
-	case "team":
-		return service.ModeTeam, nil
-	default:
-		return 0, fmt.Errorf("unknown filter mode %q: must be all, direct, codeowner, or team", s)
+// resolveFilter builds a FilterCriteria from the three filter flags.
+// Granular flags (filter-type, filter-source) take precedence and are ANDed together.
+// If neither granular flag is set, filter is treated as a preset name (default: "all").
+func resolveFilter(filter, filterType, filterSource string) (service.FilterCriteria, error) {
+	if filterType != "" || filterSource != "" {
+		return resolveGranular(filterType, filterSource)
 	}
+	if filter == "" {
+		filter = "all"
+	}
+	p := service.Preset(filter)
+	switch p {
+	case service.PresetAll, service.PresetFocus, service.PresetNearby, service.PresetOrg:
+		return service.PresetCriteria(p), nil
+	default:
+		return service.FilterCriteria{}, fmt.Errorf("unknown filter preset %q: must be all, focus, nearby, or org", filter)
+	}
+}
+
+// resolveGranular builds a FilterCriteria from raw type/source flag strings.
+func resolveGranular(filterType, filterSource string) (service.FilterCriteria, error) {
+	var criteria service.FilterCriteria
+
+	if filterType != "" {
+		rt := service.ReviewType(filterType)
+		switch rt {
+		case service.ReviewTypeDirect, service.ReviewTypeCodeowner, service.ReviewTypeTeam:
+			criteria.ReviewTypes = service.ReviewTypeSet{rt: true}
+		default:
+			return service.FilterCriteria{}, fmt.Errorf("unknown review type %q: must be direct, codeowner, or team", filterType)
+		}
+	}
+
+	if filterSource != "" {
+		as := service.AuthorSource(strings.ToUpper(filterSource))
+		switch as {
+		case service.AuthorSourceTeam, service.AuthorSourceGroup, service.AuthorSourceOrg, service.AuthorSourceOther:
+			criteria.AuthorSources = service.AuthorSourceSet{as: true}
+		default:
+			return service.FilterCriteria{}, fmt.Errorf("unknown author source %q: must be TEAM, GROUP, ORG, or OTHER", filterSource)
+		}
+	}
+
+	return criteria, nil
 }

@@ -3,6 +3,7 @@ package service
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/radiohead/gh-inbox/internal/github"
 )
@@ -169,6 +170,130 @@ func TestClassify(t *testing.T) {
 			got := Classify(tt.pr, tt.myLogin, svc)
 			if got != tt.want {
 				t.Errorf("Classify() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// buildClassifiedPR constructs a ClassifiedPR with the given type and source for filtering tests.
+func buildClassifiedPR(rt ReviewType, as AuthorSource) ClassifiedPR {
+	return ClassifiedPR{
+		PR:           github.PullRequest{Number: 1, CreatedAt: time.Now()},
+		ReviewType:   rt,
+		AuthorSource: as,
+	}
+}
+
+func TestCriteriaFilter(t *testing.T) {
+	direct := buildClassifiedPR(ReviewTypeDirect, AuthorSourceTeam)
+	codeowner := buildClassifiedPR(ReviewTypeCodeowner, AuthorSourceGroup)
+	team := buildClassifiedPR(ReviewTypeTeam, AuthorSourceOrg)
+	external := buildClassifiedPR(ReviewTypeCodeowner, AuthorSourceOther)
+	all := []ClassifiedPR{direct, codeowner, team, external}
+
+	tests := []struct {
+		name     string
+		criteria FilterCriteria
+		want     []ClassifiedPR
+	}{
+		{
+			name:     "nil criteria matches all",
+			criteria: FilterCriteria{},
+			want:     all,
+		},
+		{
+			name:     "type-only: direct",
+			criteria: FilterCriteria{ReviewTypes: ReviewTypeSet{ReviewTypeDirect: true}},
+			want:     []ClassifiedPR{direct},
+		},
+		{
+			name:     "type-only: direct and codeowner",
+			criteria: FilterCriteria{ReviewTypes: ReviewTypeSet{ReviewTypeDirect: true, ReviewTypeCodeowner: true}},
+			want:     []ClassifiedPR{direct, codeowner, external},
+		},
+		{
+			name:     "source-only: TEAM",
+			criteria: FilterCriteria{AuthorSources: AuthorSourceSet{AuthorSourceTeam: true}},
+			want:     []ClassifiedPR{direct},
+		},
+		{
+			name: "combined: direct type AND TEAM source",
+			criteria: FilterCriteria{
+				ReviewTypes:   ReviewTypeSet{ReviewTypeDirect: true},
+				AuthorSources: AuthorSourceSet{AuthorSourceTeam: true},
+			},
+			want: []ClassifiedPR{direct},
+		},
+		{
+			name: "combined: direct+codeowner AND TEAM+GROUP",
+			criteria: FilterCriteria{
+				ReviewTypes:   ReviewTypeSet{ReviewTypeDirect: true, ReviewTypeCodeowner: true},
+				AuthorSources: AuthorSourceSet{AuthorSourceTeam: true, AuthorSourceGroup: true},
+			},
+			want: []ClassifiedPR{direct, codeowner},
+		},
+		{
+			name:     "no match",
+			criteria: FilterCriteria{ReviewTypes: ReviewTypeSet{ReviewTypeTeam: true}, AuthorSources: AuthorSourceSet{AuthorSourceTeam: true}},
+			want:     []ClassifiedPR{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := &CriteriaFilter{Criteria: tt.criteria}
+			got := f.Apply(all)
+			if len(got) != len(tt.want) {
+				t.Fatalf("Apply() returned %d PRs, want %d", len(got), len(tt.want))
+			}
+			for i := range got {
+				if got[i].ReviewType != tt.want[i].ReviewType || got[i].AuthorSource != tt.want[i].AuthorSource {
+					t.Errorf("[%d] got {ReviewType:%q AuthorSource:%q}, want {ReviewType:%q AuthorSource:%q}",
+						i, got[i].ReviewType, got[i].AuthorSource,
+						tt.want[i].ReviewType, tt.want[i].AuthorSource)
+				}
+			}
+		})
+	}
+}
+
+func TestPresetCriteria(t *testing.T) {
+	direct := buildClassifiedPR(ReviewTypeDirect, AuthorSourceTeam)
+	codeownTeam := buildClassifiedPR(ReviewTypeCodeowner, AuthorSourceTeam)
+	codeownGroup := buildClassifiedPR(ReviewTypeCodeowner, AuthorSourceGroup)
+	teamReview := buildClassifiedPR(ReviewTypeTeam, AuthorSourceOrg)
+	external := buildClassifiedPR(ReviewTypeDirect, AuthorSourceOther)
+	all := []ClassifiedPR{direct, codeownTeam, codeownGroup, teamReview, external}
+
+	tests := []struct {
+		preset    Preset
+		wantCount int
+		check     func([]ClassifiedPR) bool
+	}{
+		{
+			preset:    PresetAll,
+			wantCount: 5,
+		},
+		{
+			preset:    PresetFocus,
+			wantCount: 2, // direct+TEAM, codeowner+TEAM
+		},
+		{
+			preset:    PresetNearby,
+			wantCount: 3, // direct+TEAM, codeowner+TEAM, codeowner+GROUP
+		},
+		{
+			preset:    PresetOrg,
+			wantCount: 4, // all except OTHER
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(string(tt.preset), func(t *testing.T) {
+			f := &CriteriaFilter{Criteria: PresetCriteria(tt.preset)}
+			got := f.Apply(all)
+			if len(got) != tt.wantCount {
+				t.Errorf("PresetCriteria(%q).Apply() = %d PRs, want %d", tt.preset, len(got), tt.wantCount)
 			}
 		})
 	}

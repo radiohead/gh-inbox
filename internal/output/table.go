@@ -30,6 +30,10 @@ func WriteTable(w io.Writer, prs []service.ClassifiedPR) error {
 	}
 
 	sort.SliceStable(prs, func(i, j int) bool {
+		pi, pj := service.Priority(prs[i]), service.Priority(prs[j])
+		if pi != pj {
+			return pi < pj
+		}
 		return prs[i].PR.CreatedAt.Before(prs[j].PR.CreatedAt)
 	})
 

@@ -2,37 +2,82 @@ package service
 
 import "github.com/radiohead/gh-inbox/internal/github"
 
-// Mode controls which PRs are included in the output.
-type Mode int
+// ReviewTypeSet is a set of ReviewType values for filter matching.
+type ReviewTypeSet map[ReviewType]bool
+
+// AuthorSourceSet is a set of AuthorSource values for filter matching.
+type AuthorSourceSet map[AuthorSource]bool
+
+// FilterCriteria specifies which PRs to include.
+// A nil set matches all values on that dimension.
+type FilterCriteria struct {
+	ReviewTypes   ReviewTypeSet   // nil = match all
+	AuthorSources AuthorSourceSet // nil = match all
+}
+
+// Matches reports whether cp satisfies the criteria.
+func (fc FilterCriteria) Matches(cp ClassifiedPR) bool {
+	if fc.ReviewTypes != nil && !fc.ReviewTypes[cp.ReviewType] {
+		return false
+	}
+	if fc.AuthorSources != nil && !fc.AuthorSources[cp.AuthorSource] {
+		return false
+	}
+	return true
+}
+
+// CriteriaFilter keeps only PRs that satisfy the configured FilterCriteria.
+type CriteriaFilter struct {
+	Criteria FilterCriteria
+}
+
+// Apply returns the subset of prs that match the criteria.
+func (f *CriteriaFilter) Apply(prs []ClassifiedPR) []ClassifiedPR {
+	result := make([]ClassifiedPR, 0, len(prs))
+	for _, cp := range prs {
+		if f.Criteria.Matches(cp) {
+			result = append(result, cp)
+		}
+	}
+	return result
+}
+
+// Preset is a named predefined filter combination.
+type Preset string
 
 const (
-	// ModeAll is the default — no filtering, all PRs are shown.
-	ModeAll Mode = iota
-
-	// ModeDirect shows PRs where I'm requested as a User AND no other
-	// User reviewer shares any of my teams.
-	ModeDirect
-
-	// ModeCodeowner shows PRs that match neither direct nor team — the
-	// residual bucket where I'm reviewing alongside teammates.
-	ModeCodeowner
-
-	// ModeTeam shows PRs where my team is requested AND no individual
-	// User reviewer shares any of my teams.
-	ModeTeam
+	PresetAll    Preset = "all"
+	PresetFocus  Preset = "focus"
+	PresetNearby Preset = "nearby"
+	PresetOrg    Preset = "org"
 )
 
-// modeToReviewType maps a filter Mode to its corresponding ReviewType.
-func modeToReviewType(m Mode) ReviewType {
-	switch m {
-	case ModeDirect:
-		return ReviewTypeDirect
-	case ModeTeam:
-		return ReviewTypeTeam
-	case ModeCodeowner:
-		return ReviewTypeCodeowner
-	default:
-		return "" // ModeAll handled before this is called
+// PresetCriteria returns the FilterCriteria for the named preset.
+func PresetCriteria(p Preset) FilterCriteria {
+	switch p {
+	case PresetFocus:
+		// Highest-priority: my team's PRs where I'm directly responsible.
+		return FilterCriteria{
+			ReviewTypes:   ReviewTypeSet{ReviewTypeDirect: true, ReviewTypeCodeowner: true},
+			AuthorSources: AuthorSourceSet{AuthorSourceTeam: true},
+		}
+	case PresetNearby:
+		// Expand to sibling teams.
+		return FilterCriteria{
+			ReviewTypes:   ReviewTypeSet{ReviewTypeDirect: true, ReviewTypeCodeowner: true},
+			AuthorSources: AuthorSourceSet{AuthorSourceTeam: true, AuthorSourceGroup: true},
+		}
+	case PresetOrg:
+		// All org PRs, excluding external contributors.
+		return FilterCriteria{
+			AuthorSources: AuthorSourceSet{
+				AuthorSourceTeam:  true,
+				AuthorSourceGroup: true,
+				AuthorSourceOrg:   true,
+			},
+		}
+	default: // PresetAll or unknown
+		return FilterCriteria{} // nil sets = match all
 	}
 }
 
