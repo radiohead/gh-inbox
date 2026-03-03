@@ -38,6 +38,7 @@ func TestFetchReviewRequestedPRs(t *testing.T) {
 							Number: 101,
 							Title:  "Add feature",
 							URL:    "https://github.com/test-org/repo/pull/101",
+							Author: struct{ Login string }{Login: "someuser"},
 							Repository: struct{ NameWithOwner string }{
 								NameWithOwner: "test-org/repo",
 							},
@@ -79,6 +80,7 @@ func TestFetchReviewRequestedPRs(t *testing.T) {
 					Number: 101,
 					Title:  "Add feature",
 					URL:    "https://github.com/test-org/repo/pull/101",
+					Author: "someuser",
 					Repository: Repository{Owner: "test-org", Name: "repo"},
 					ReviewRequests: ReviewRequestConnection{
 						Nodes: []ReviewRequest{
@@ -206,6 +208,9 @@ func TestFetchReviewRequestedPRs(t *testing.T) {
 				}
 				if pr.URL != w.URL {
 					t.Errorf("[%d] URL = %q, want %q", i, pr.URL, w.URL)
+				}
+				if pr.Author != w.Author {
+					t.Errorf("[%d] Author = %q, want %q", i, pr.Author, w.Author)
 				}
 				if pr.Repository != w.Repository {
 					t.Errorf("[%d] Repo = %+v, want %+v", i, pr.Repository, w.Repository)

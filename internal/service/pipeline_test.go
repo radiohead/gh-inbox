@@ -41,10 +41,10 @@ func TestSourceClassifier(t *testing.T) {
 		t.Fatalf("ClassifyAll returned %d results, want 3", len(got))
 	}
 
-	cases := []Source{SourceDirect, SourceCodeowner, SourceTeam}
+	cases := []ReviewType{ReviewTypeDirect, ReviewTypeCodeowner, ReviewTypeTeam}
 	for i, want := range cases {
-		if got[i].Source != want {
-			t.Errorf("[%d] Source = %q, want %q", i, got[i].Source, want)
+		if got[i].ReviewType != want {
+			t.Errorf("[%d] ReviewType = %q, want %q", i, got[i].ReviewType, want)
 		}
 		if got[i].PR.Number != prs[i].Number {
 			t.Errorf("[%d] PR.Number = %d, want %d", i, got[i].PR.Number, prs[i].Number)
@@ -62,60 +62,9 @@ func TestPassthroughClassifier(t *testing.T) {
 		t.Fatalf("ClassifyAll returned %d results, want 2", len(got))
 	}
 	for i, cp := range got {
-		if cp.Source != "" {
-			t.Errorf("[%d] Source = %q, want empty", i, cp.Source)
+		if cp.ReviewType != "" {
+			t.Errorf("[%d] ReviewType = %q, want empty", i, cp.ReviewType)
 		}
-	}
-}
-
-func TestModeFilter(t *testing.T) {
-	direct := ClassifiedPR{PR: buildPR("org/a", nil), Source: SourceDirect}
-	team := ClassifiedPR{PR: buildPR("org/b", nil), Source: SourceTeam}
-	codeowner := ClassifiedPR{PR: buildPR("org/c", nil), Source: SourceCodeowner}
-	all := []ClassifiedPR{direct, team, codeowner}
-
-	tests := []struct {
-		mode      Mode
-		wantCount int
-		wantSrc   Source
-	}{
-		{ModeAll, 3, ""},
-		{ModeDirect, 1, SourceDirect},
-		{ModeTeam, 1, SourceTeam},
-		{ModeCodeowner, 1, SourceCodeowner},
-	}
-
-	for _, tt := range tests {
-		f := &ModeFilter{Mode: tt.mode}
-		got := f.Apply(all)
-		if len(got) != tt.wantCount {
-			t.Errorf("ModeFilter{%v}.Apply() returned %d PRs, want %d", tt.mode, len(got), tt.wantCount)
-			continue
-		}
-		if tt.mode != ModeAll {
-			for _, cp := range got {
-				if cp.Source != tt.wantSrc {
-					t.Errorf("ModeFilter{%v}: got Source=%q, want %q", tt.mode, cp.Source, tt.wantSrc)
-				}
-			}
-		}
-	}
-}
-
-func TestModeFilterPartition(t *testing.T) {
-	// The three non-all modes partition the input exhaustively and non-overlapping.
-	direct := ClassifiedPR{PR: buildPR("org/a", nil), Source: SourceDirect}
-	team := ClassifiedPR{PR: buildPR("org/b", nil), Source: SourceTeam}
-	codeowner := ClassifiedPR{PR: buildPR("org/c", nil), Source: SourceCodeowner}
-	all := []ClassifiedPR{direct, team, codeowner}
-
-	d := (&ModeFilter{Mode: ModeDirect}).Apply(all)
-	tm := (&ModeFilter{Mode: ModeTeam}).Apply(all)
-	co := (&ModeFilter{Mode: ModeCodeowner}).Apply(all)
-
-	total := len(d) + len(tm) + len(co)
-	if total != len(all) {
-		t.Errorf("partition total = %d, want %d (non-overlapping, exhaustive)", total, len(all))
 	}
 }
 
@@ -136,7 +85,7 @@ func TestPipelineRun(t *testing.T) {
 		return prs, nil
 	}}
 	classifier := &SourceClassifier{Login: "alice", Teams: svc}
-	filter := &ModeFilter{Mode: ModeDirect}
+	filter := &CriteriaFilter{Criteria: FilterCriteria{ReviewTypes: ReviewTypeSet{ReviewTypeDirect: true}}}
 
 	p := NewPipeline(fetcher, classifier, filter)
 	got, err := p.Run("org")
@@ -146,8 +95,8 @@ func TestPipelineRun(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("Run() returned %d PRs, want 1", len(got))
 	}
-	if got[0].Source != SourceDirect {
-		t.Errorf("Run() got[0].Source = %q, want %q", got[0].Source, SourceDirect)
+	if got[0].ReviewType != ReviewTypeDirect {
+		t.Errorf("Run() got[0].ReviewType = %q, want %q", got[0].ReviewType, ReviewTypeDirect)
 	}
 }
 
@@ -156,7 +105,7 @@ func TestPipelineRunFetchError(t *testing.T) {
 	fetcher := &mockFetchFunc{fn: func(_ string) ([]github.PullRequest, error) {
 		return nil, fetchErr
 	}}
-	p := NewPipeline(fetcher, PassthroughClassifier{}, &ModeFilter{Mode: ModeAll})
+	p := NewPipeline(fetcher, PassthroughClassifier{}, &CriteriaFilter{})
 	_, err := p.Run("org")
 	if err == nil {
 		t.Fatal("Run() expected error, got nil")

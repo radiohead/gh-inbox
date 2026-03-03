@@ -2,11 +2,13 @@ package service
 
 import "github.com/radiohead/gh-inbox/internal/github"
 
-// ClassifiedPR pairs a PullRequest with its precomputed Source classification.
-// Source is empty when classification is skipped (e.g. PassthroughClassifier).
+// ClassifiedPR pairs a PullRequest with its precomputed ReviewType classification
+// and AuthorSource. ReviewType is empty when classification is skipped
+// (e.g. PassthroughClassifier).
 type ClassifiedPR struct {
-	PR     github.PullRequest
-	Source Source
+	PR           github.PullRequest
+	ReviewType   ReviewType
+	AuthorSource AuthorSource
 }
 
 // Fetcher fetches raw pull requests for an org.
@@ -14,7 +16,7 @@ type Fetcher interface {
 	Fetch(org string) ([]github.PullRequest, error)
 }
 
-// Classifier assigns a Source classification to each PR.
+// Classifier assigns a ReviewType classification to each PR.
 type Classifier interface {
 	ClassifyAll(prs []github.PullRequest) []ClassifiedPR
 }
@@ -29,7 +31,7 @@ var (
 	_ Fetcher    = FetchFunc(nil)
 	_ Classifier = (*SourceClassifier)(nil)
 	_ Classifier = PassthroughClassifier{}
-	_ PRFilter   = (*ModeFilter)(nil)
+	_ PRFilter   = (*CriteriaFilter)(nil)
 )
 
 // FetchFunc is a function adapter implementing Fetcher.
@@ -46,48 +48,28 @@ type SourceClassifier struct {
 	Teams *TeamService
 }
 
-// ClassifyAll classifies each PR by delegating to Classify.
+// ClassifyAll classifies each PR by delegating to Classify and ClassifyAuthorSource.
 func (c *SourceClassifier) ClassifyAll(prs []github.PullRequest) []ClassifiedPR {
 	result := make([]ClassifiedPR, len(prs))
 	for i, pr := range prs {
 		result[i] = ClassifiedPR{
-			PR:     pr,
-			Source: Classify(pr, c.Login, c.Teams),
+			PR:           pr,
+			ReviewType:   Classify(pr, c.Login, c.Teams),
+			AuthorSource: ClassifyAuthorSource(pr, c.Login, c.Teams),
 		}
 	}
 	return result
 }
 
-// PassthroughClassifier wraps PRs with an empty Source — used when
-// classification is not required (e.g. ModeAll + JSON output).
+// PassthroughClassifier wraps PRs with an empty ReviewType — used when
+// classification is not required.
 type PassthroughClassifier struct{}
 
-// ClassifyAll wraps each PR with an empty Source.
+// ClassifyAll wraps each PR with an empty ReviewType.
 func (PassthroughClassifier) ClassifyAll(prs []github.PullRequest) []ClassifiedPR {
 	result := make([]ClassifiedPR, len(prs))
 	for i, pr := range prs {
 		result[i] = ClassifiedPR{PR: pr}
-	}
-	return result
-}
-
-// ModeFilter keeps only PRs whose Source matches the configured mode.
-// ModeAll passes all PRs through without inspecting Source.
-type ModeFilter struct {
-	Mode Mode
-}
-
-// Apply returns the subset of prs matching the configured mode.
-func (f *ModeFilter) Apply(prs []ClassifiedPR) []ClassifiedPR {
-	if f.Mode == ModeAll {
-		return prs
-	}
-	target := modeToSource(f.Mode)
-	result := make([]ClassifiedPR, 0, len(prs))
-	for _, cp := range prs {
-		if cp.Source == target {
-			result = append(result, cp)
-		}
 	}
 	return result
 }

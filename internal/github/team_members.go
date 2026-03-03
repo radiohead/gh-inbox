@@ -2,7 +2,10 @@ package github
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+
+	"github.com/cli/go-gh/v2/pkg/api"
 )
 
 // userResponse is the REST response for GET /user.
@@ -78,4 +81,50 @@ func (c *Client) FetchMyTeams() ([]UserTeam, error) {
 	}
 
 	return teams, nil
+}
+
+// FetchChildTeams retrieves all child teams of the given parent team via REST.
+// If a Cacher is configured on the Client, results are read from and written
+// to the cache to avoid redundant API calls.
+func (c *Client) FetchChildTeams(org, parentSlug string) ([]ChildTeam, error) {
+	cacheKey := "child-teams:" + org + "/" + parentSlug
+
+	if c.cache != nil {
+		data, found, err := c.cache.Get(cacheKey)
+		if err == nil && found {
+			var cached []ChildTeam
+			if jsonErr := json.Unmarshal(data, &cached); jsonErr == nil {
+				return cached, nil
+			}
+		}
+	}
+
+	var children []ChildTeam
+	path := fmt.Sprintf("orgs/%s/teams/%s/teams?per_page=100", org, parentSlug)
+	if err := c.rest.Get(path, &children); err != nil {
+		return nil, fmt.Errorf("fetching child teams for %s/%s: %w", org, parentSlug, err)
+	}
+
+	if c.cache != nil {
+		if data, err := json.Marshal(children); err == nil {
+			_ = c.cache.Set(cacheKey, data)
+		}
+	}
+
+	return children, nil
+}
+
+// FetchIsOrgMember reports whether login is a member of the given organization.
+// The GitHub REST API returns 204 for members and 404 for non-members.
+func (c *Client) FetchIsOrgMember(org, login string) (bool, error) {
+	path := fmt.Sprintf("orgs/%s/members/%s", org, login)
+	err := c.rest.Get(path, nil)
+	if err == nil {
+		return true, nil
+	}
+	var httpErr *api.HTTPError
+	if errors.As(err, &httpErr) && httpErr.StatusCode == 404 {
+		return false, nil
+	}
+	return false, fmt.Errorf("checking org membership for %s/%s: %w", org, login, err)
 }

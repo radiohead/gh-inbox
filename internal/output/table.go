@@ -30,24 +30,30 @@ func WriteTable(w io.Writer, prs []service.ClassifiedPR) error {
 	}
 
 	sort.SliceStable(prs, func(i, j int) bool {
+		pi, pj := service.Priority(prs[i]), service.Priority(prs[j])
+		if pi != pj {
+			return pi < pj
+		}
 		return prs[i].PR.CreatedAt.Before(prs[j].PR.CreatedAt)
 	})
 
 	tp := tableprinter.New(w, isTTY, width)
-	tp.AddHeader([]string{"REPO", "PR", "TITLE", "URL", "SOURCE", "AGE"})
+	tp.AddHeader([]string{"REPO", "PR", "TITLE", "URL", "TYPE", "SOURCE", "AGE"})
 
 	for _, cp := range prs {
 		pr := cp.PR
 		repo := pr.Repository.Owner + "/" + pr.Repository.Name
 		prNum := fmt.Sprintf("#%d", pr.Number)
-		src := sourceLabel(cp.Source)
+		rt := reviewTypeLabel(cp.ReviewType)
+		src := authorSourceLabel(cp.AuthorSource)
 		age := humanAge(pr.CreatedAt)
 
 		tp.AddField(repo)
 		tp.AddField(prNum)
 		tp.AddField(pr.Title)
 		tp.AddField(pr.URL)
-		tp.AddField(src, tableprinter.WithColor(sourceColor(src)))
+		tp.AddField(rt, tableprinter.WithColor(reviewTypeColor(rt)))
+		tp.AddField(src, tableprinter.WithColor(authorSourceColor(src)))
 		tp.AddField(age)
 		tp.EndRow()
 	}
@@ -55,25 +61,48 @@ func WriteTable(w io.Writer, prs []service.ClassifiedPR) error {
 	return tp.Render()
 }
 
-// sourceLabel converts a Source to its display string.
-// An empty Source (from PassthroughClassifier) renders as "-".
-func sourceLabel(s service.Source) string {
+// reviewTypeLabel converts a ReviewType to its display string.
+// An empty ReviewType (from PassthroughClassifier) renders as "-".
+func reviewTypeLabel(s service.ReviewType) string {
 	if s == "" {
 		return "-"
 	}
 	return string(s)
 }
 
-// sourceColor returns an ANSI color function for the given source label.
+// reviewTypeColor returns an ANSI color function for the given review type label.
 // Colors are only applied when the tableprinter is in TTY mode.
-func sourceColor(source string) func(string) string {
-	switch source {
+func reviewTypeColor(rt string) func(string) string {
+	switch rt {
 	case "direct":
 		return func(s string) string { return "\033[32m" + s + "\033[0m" } // green
 	case "team":
 		return func(s string) string { return "\033[33m" + s + "\033[0m" } // yellow
 	default: // codeowner or "-"
 		return func(s string) string { return "\033[36m" + s + "\033[0m" } // cyan
+	}
+}
+
+// authorSourceLabel converts an AuthorSource to its display string.
+// An empty AuthorSource renders as "-".
+func authorSourceLabel(s service.AuthorSource) string {
+	if s == "" {
+		return "-"
+	}
+	return string(s)
+}
+
+// authorSourceColor returns an ANSI color function for the given author source label.
+func authorSourceColor(src string) func(string) string {
+	switch src {
+	case "TEAM":
+		return func(s string) string { return "\033[32m" + s + "\033[0m" } // green
+	case "GROUP":
+		return func(s string) string { return "\033[33m" + s + "\033[0m" } // yellow
+	case "ORG":
+		return func(s string) string { return "\033[36m" + s + "\033[0m" } // cyan
+	default: // OTHER or "-"
+		return func(s string) string { return s } // default
 	}
 }
 

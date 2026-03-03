@@ -3,6 +3,7 @@ package service
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/radiohead/gh-inbox/internal/github"
 )
@@ -74,17 +75,17 @@ func TestClassify(t *testing.T) {
 		myLogin string
 		members map[string][]github.TeamMember
 		myTeams []github.UserTeam
-		want    Source
+		want    ReviewType
 	}{
 		{
-			name:    "sole User reviewer — SourceDirect",
+			name:    "sole User reviewer — ReviewTypeDirect",
 			pr:      buildPR("org/repo", []github.ReviewRequest{userReq("alice")}),
 			myLogin: "alice",
-			want:    SourceDirect,
+			want:    ReviewTypeDirect,
 		},
 		{
 			// KEY CASE: direct wins over team — me(User) + my team both requested
-			name: "User(me) + Team(my-team) — SourceDirect (direct wins)",
+			name: "User(me) + Team(my-team) — ReviewTypeDirect (direct wins)",
 			pr: buildPR("org/repo", []github.ReviewRequest{
 				userReq("alice"), teamReq("backend"),
 			}),
@@ -95,11 +96,11 @@ func TestClassify(t *testing.T) {
 			myTeams: []github.UserTeam{
 				{Slug: "backend", Organization: github.TeamOrganization{Login: "org"}},
 			},
-			want: SourceDirect,
+			want: ReviewTypeDirect,
 		},
 		{
-			// only team requested, no individual user me → SourceTeam
-			name: "only Team (mine), no User me — SourceTeam",
+			// only team requested, no individual user me → ReviewTypeTeam
+			name: "only Team (mine), no User me — ReviewTypeTeam",
 			pr: buildPR("org/repo", []github.ReviewRequest{
 				teamReq("backend"),
 			}),
@@ -110,11 +111,11 @@ func TestClassify(t *testing.T) {
 			myTeams: []github.UserTeam{
 				{Slug: "backend", Organization: github.TeamOrganization{Login: "org"}},
 			},
-			want: SourceTeam,
+			want: ReviewTypeTeam,
 		},
 		{
 			// me + teammate(User) → not direct (teammate present), not team (no team req) → codeowner
-			name: "User(me) + teammate(User) — SourceCodeowner",
+			name: "User(me) + teammate(User) — ReviewTypeCodeowner",
 			pr: buildPR("org/repo", []github.ReviewRequest{
 				userReq("alice"), userReq("bob"),
 			}),
@@ -125,17 +126,17 @@ func TestClassify(t *testing.T) {
 			myTeams: []github.UserTeam{
 				{Slug: "myteam", Organization: github.TeamOrganization{Login: "org"}},
 			},
-			want: SourceCodeowner,
+			want: ReviewTypeCodeowner,
 		},
 		{
-			name:    "empty requests — SourceCodeowner",
+			name:    "empty requests — ReviewTypeCodeowner",
 			pr:      buildPR("org/repo", []github.ReviewRequest{}),
 			myLogin: "alice",
-			want:    SourceCodeowner,
+			want:    ReviewTypeCodeowner,
 		},
 		{
-			// me + non-teammate + my team → me(User) direct (carol not a teammate) → SourceDirect
-			name: "User(me) + non-teammate + Team(mine) — SourceDirect",
+			// me + non-teammate + my team → me(User) direct (carol not a teammate) → ReviewTypeDirect
+			name: "User(me) + non-teammate + Team(mine) — ReviewTypeDirect",
 			pr: buildPR("org/repo", []github.ReviewRequest{
 				userReq("alice"), userReq("carol"), teamReq("backend"),
 			}),
@@ -147,11 +148,11 @@ func TestClassify(t *testing.T) {
 			myTeams: []github.UserTeam{
 				{Slug: "myteam", Organization: github.TeamOrganization{Login: "org"}},
 			},
-			want: SourceDirect,
+			want: ReviewTypeDirect,
 		},
 		{
-			// only a team that is NOT mine → neither direct nor team → SourceCodeowner
-			name: "only Team (not mine) — SourceCodeowner",
+			// only a team that is NOT mine → neither direct nor team → ReviewTypeCodeowner
+			name: "only Team (not mine) — ReviewTypeCodeowner",
 			pr: buildPR("org/repo", []github.ReviewRequest{
 				teamReq("frontend"),
 			}),
@@ -159,7 +160,7 @@ func TestClassify(t *testing.T) {
 			members: map[string][]github.TeamMember{
 				"org/frontend": {{Login: "bob"}},
 			},
-			want: SourceCodeowner,
+			want: ReviewTypeCodeowner,
 		},
 	}
 
@@ -169,6 +170,130 @@ func TestClassify(t *testing.T) {
 			got := Classify(tt.pr, tt.myLogin, svc)
 			if got != tt.want {
 				t.Errorf("Classify() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// buildClassifiedPR constructs a ClassifiedPR with the given type and source for filtering tests.
+func buildClassifiedPR(rt ReviewType, as AuthorSource) ClassifiedPR {
+	return ClassifiedPR{
+		PR:           github.PullRequest{Number: 1, CreatedAt: time.Now()},
+		ReviewType:   rt,
+		AuthorSource: as,
+	}
+}
+
+func TestCriteriaFilter(t *testing.T) {
+	direct := buildClassifiedPR(ReviewTypeDirect, AuthorSourceTeam)
+	codeowner := buildClassifiedPR(ReviewTypeCodeowner, AuthorSourceGroup)
+	team := buildClassifiedPR(ReviewTypeTeam, AuthorSourceOrg)
+	external := buildClassifiedPR(ReviewTypeCodeowner, AuthorSourceOther)
+	all := []ClassifiedPR{direct, codeowner, team, external}
+
+	tests := []struct {
+		name     string
+		criteria FilterCriteria
+		want     []ClassifiedPR
+	}{
+		{
+			name:     "nil criteria matches all",
+			criteria: FilterCriteria{},
+			want:     all,
+		},
+		{
+			name:     "type-only: direct",
+			criteria: FilterCriteria{ReviewTypes: ReviewTypeSet{ReviewTypeDirect: true}},
+			want:     []ClassifiedPR{direct},
+		},
+		{
+			name:     "type-only: direct and codeowner",
+			criteria: FilterCriteria{ReviewTypes: ReviewTypeSet{ReviewTypeDirect: true, ReviewTypeCodeowner: true}},
+			want:     []ClassifiedPR{direct, codeowner, external},
+		},
+		{
+			name:     "source-only: TEAM",
+			criteria: FilterCriteria{AuthorSources: AuthorSourceSet{AuthorSourceTeam: true}},
+			want:     []ClassifiedPR{direct},
+		},
+		{
+			name: "combined: direct type AND TEAM source",
+			criteria: FilterCriteria{
+				ReviewTypes:   ReviewTypeSet{ReviewTypeDirect: true},
+				AuthorSources: AuthorSourceSet{AuthorSourceTeam: true},
+			},
+			want: []ClassifiedPR{direct},
+		},
+		{
+			name: "combined: direct+codeowner AND TEAM+GROUP",
+			criteria: FilterCriteria{
+				ReviewTypes:   ReviewTypeSet{ReviewTypeDirect: true, ReviewTypeCodeowner: true},
+				AuthorSources: AuthorSourceSet{AuthorSourceTeam: true, AuthorSourceGroup: true},
+			},
+			want: []ClassifiedPR{direct, codeowner},
+		},
+		{
+			name:     "no match",
+			criteria: FilterCriteria{ReviewTypes: ReviewTypeSet{ReviewTypeTeam: true}, AuthorSources: AuthorSourceSet{AuthorSourceTeam: true}},
+			want:     []ClassifiedPR{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := &CriteriaFilter{Criteria: tt.criteria}
+			got := f.Apply(all)
+			if len(got) != len(tt.want) {
+				t.Fatalf("Apply() returned %d PRs, want %d", len(got), len(tt.want))
+			}
+			for i := range got {
+				if got[i].ReviewType != tt.want[i].ReviewType || got[i].AuthorSource != tt.want[i].AuthorSource {
+					t.Errorf("[%d] got {ReviewType:%q AuthorSource:%q}, want {ReviewType:%q AuthorSource:%q}",
+						i, got[i].ReviewType, got[i].AuthorSource,
+						tt.want[i].ReviewType, tt.want[i].AuthorSource)
+				}
+			}
+		})
+	}
+}
+
+func TestPresetCriteria(t *testing.T) {
+	direct := buildClassifiedPR(ReviewTypeDirect, AuthorSourceTeam)
+	codeownTeam := buildClassifiedPR(ReviewTypeCodeowner, AuthorSourceTeam)
+	codeownGroup := buildClassifiedPR(ReviewTypeCodeowner, AuthorSourceGroup)
+	teamReview := buildClassifiedPR(ReviewTypeTeam, AuthorSourceOrg)
+	external := buildClassifiedPR(ReviewTypeDirect, AuthorSourceOther)
+	all := []ClassifiedPR{direct, codeownTeam, codeownGroup, teamReview, external}
+
+	tests := []struct {
+		preset    Preset
+		wantCount int
+		check     func([]ClassifiedPR) bool
+	}{
+		{
+			preset:    PresetAll,
+			wantCount: 5,
+		},
+		{
+			preset:    PresetFocus,
+			wantCount: 2, // direct+TEAM, codeowner+TEAM
+		},
+		{
+			preset:    PresetNearby,
+			wantCount: 3, // direct+TEAM, codeowner+TEAM, codeowner+GROUP
+		},
+		{
+			preset:    PresetOrg,
+			wantCount: 4, // all except OTHER
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(string(tt.preset), func(t *testing.T) {
+			f := &CriteriaFilter{Criteria: PresetCriteria(tt.preset)}
+			got := f.Apply(all)
+			if len(got) != tt.wantCount {
+				t.Errorf("PresetCriteria(%q).Apply() = %d PRs, want %d", tt.preset, len(got), tt.wantCount)
 			}
 		})
 	}
