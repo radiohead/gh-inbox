@@ -28,8 +28,18 @@ type Client struct {
 	cache Cacher // optional; nil means no caching
 }
 
+// ClientOption configures a Client.
+type ClientOption func(*Client)
+
+// WithCache sets the Cacher used by the Client for persistent caching.
+func WithCache(c Cacher) ClientOption {
+	return func(cl *Client) {
+		cl.cache = c
+	}
+}
+
 // NewClient creates a Client using the default gh CLI authentication.
-func NewClient() (*Client, error) {
+func NewClient(opts ...ClientOption) (*Client, error) {
 	gql, err := api.DefaultGraphQLClient()
 	if err != nil {
 		return nil, err
@@ -38,7 +48,11 @@ func NewClient() (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Client{gql: gql, rest: rest}, nil
+	c := &Client{gql: gql, rest: rest}
+	for _, opt := range opts {
+		opt(c)
+	}
+	return c, nil
 }
 
 // NewClientWithDoer creates a Client with the provided graphQLDoer.
