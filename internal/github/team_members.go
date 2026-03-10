@@ -14,11 +14,27 @@ type userResponse struct {
 }
 
 // FetchCurrentUser returns the login of the authenticated GitHub user via REST.
+// If a Cacher is configured on the Client, results are read from and written
+// to the cache to avoid redundant API calls.
 func (c *Client) FetchCurrentUser() (string, error) {
+	const cacheKey = "current-user"
+
+	if c.cache != nil {
+		data, found, err := c.cache.Get(cacheKey)
+		if err == nil && found {
+			return string(data), nil
+		}
+	}
+
 	var u userResponse
 	if err := c.rest.Get("user", &u); err != nil {
 		return "", fmt.Errorf("fetching current user: %w", err)
 	}
+
+	if c.cache != nil {
+		_ = c.cache.Set(cacheKey, []byte(u.Login))
+	}
+
 	return u.Login, nil
 }
 

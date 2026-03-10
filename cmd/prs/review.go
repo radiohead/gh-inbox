@@ -2,10 +2,12 @@ package prs
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
 
+	"github.com/radiohead/gh-inbox/internal/cache"
 	"github.com/radiohead/gh-inbox/internal/github"
 	"github.com/radiohead/gh-inbox/internal/output"
 	"github.com/radiohead/gh-inbox/internal/service"
@@ -29,7 +31,16 @@ var reviewCmd = &cobra.Command{
 			return err
 		}
 
-		client, err := github.NewClient()
+		diskCache, cacheErr := cache.NewDiskCacher("", 0)
+		if cacheErr != nil {
+			fmt.Fprintf(os.Stderr, "warning: could not initialize disk cache: %v\n", cacheErr)
+		}
+		var opts []github.ClientOption
+		if diskCache != nil {
+			opts = append(opts, github.WithCache(diskCache))
+		}
+
+		client, err := github.NewClient(opts...)
 		if err != nil {
 			return fmt.Errorf("creating GitHub client: %w", err)
 		}
