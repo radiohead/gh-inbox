@@ -68,15 +68,17 @@ var reviewCmd = &cobra.Command{
 		case "json":
 			type jsonPR struct {
 				github.PullRequest
-				ReviewType string `json:"reviewType,omitempty"`
-				Source     string `json:"source,omitempty"`
+				ReviewType   string `json:"reviewType,omitempty"`
+				Source       string `json:"source,omitempty"`
+				ReviewStatus string `json:"reviewStatus,omitempty"`
 			}
 			out := make([]jsonPR, len(results))
 			for i, cp := range results {
 				out[i] = jsonPR{
-					PullRequest: cp.PR,
-					ReviewType:  string(cp.ReviewType),
-					Source:      string(cp.AuthorSource),
+					PullRequest:  cp.PR,
+					ReviewType:   string(cp.ReviewType),
+					Source:       string(cp.AuthorSource),
+					ReviewStatus: string(cp.ReviewStatus),
 				}
 			}
 			return output.WriteJSON(cmd.OutOrStdout(), out)
