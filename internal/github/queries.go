@@ -30,6 +30,17 @@ type searchPRNode struct {
 	ReviewRequests struct {
 		Nodes []searchReviewRequestNode
 	} `graphql:"reviewRequests(first: 20)"`
+	Reviews struct {
+		Nodes []searchReviewNode
+	} `graphql:"reviews(last: 20)"`
+}
+
+// searchReviewNode represents a single review submitted on a PR.
+type searchReviewNode struct {
+	Author struct {
+		Login string
+	} `graphql:"author"`
+	State ReviewState
 }
 
 // searchReviewRequestNode represents a single review request on a PR.

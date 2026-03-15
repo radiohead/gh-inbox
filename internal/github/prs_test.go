@@ -231,3 +231,67 @@ func TestFetchReviewRequestedPRs(t *testing.T) {
 		})
 	}
 }
+
+func TestConvertSearchPRNode_Reviews(t *testing.T) {
+	tests := []struct {
+		name        string
+		reviewNodes []searchReviewNode
+		wantReviews []Review
+	}{
+		{
+			name: "all five review states mapped correctly",
+			reviewNodes: []searchReviewNode{
+				{Author: struct{ Login string }{Login: "alice"}, State: ReviewStateApproved},
+				{Author: struct{ Login string }{Login: "bob"}, State: ReviewStateChangesRequested},
+				{Author: struct{ Login string }{Login: "carol"}, State: ReviewStateCommented},
+				{Author: struct{ Login string }{Login: "dave"}, State: ReviewStatePending},
+				{Author: struct{ Login string }{Login: "eve"}, State: ReviewStateDismissed},
+			},
+			wantReviews: []Review{
+				{Author: "alice", State: ReviewStateApproved},
+				{Author: "bob", State: ReviewStateChangesRequested},
+				{Author: "carol", State: ReviewStateCommented},
+				{Author: "dave", State: ReviewStatePending},
+				{Author: "eve", State: ReviewStateDismissed},
+			},
+		},
+		{
+			name:        "zero reviews produces empty slice not nil",
+			reviewNodes: nil,
+			wantReviews: []Review{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			node := searchPRNode{
+				Number: 1,
+				Title:  "Test PR",
+				URL:    "https://github.com/org/repo/pull/1",
+				Repository: struct{ NameWithOwner string }{
+					NameWithOwner: "org/repo",
+				},
+				Reviews: struct {
+					Nodes []searchReviewNode
+				}{
+					Nodes: tt.reviewNodes,
+				},
+			}
+
+			pr := convertSearchPRNode(node)
+
+			if len(pr.Reviews) != len(tt.wantReviews) {
+				t.Fatalf("Reviews len = %d, want %d", len(pr.Reviews), len(tt.wantReviews))
+			}
+			for i, rv := range pr.Reviews {
+				w := tt.wantReviews[i]
+				if rv.Author != w.Author {
+					t.Errorf("[%d] Author = %q, want %q", i, rv.Author, w.Author)
+				}
+				if rv.State != w.State {
+					t.Errorf("[%d] State = %q, want %q", i, rv.State, w.State)
+				}
+			}
+		})
+	}
+}
