@@ -177,10 +177,16 @@ func TestClassify(t *testing.T) {
 
 // buildClassifiedPR constructs a ClassifiedPR with the given type and source for filtering tests.
 func buildClassifiedPR(rt ReviewType, as AuthorSource) ClassifiedPR {
+	return buildClassifiedPRWithStatus(rt, as, ReviewStatusOpen)
+}
+
+// buildClassifiedPRWithStatus constructs a ClassifiedPR with type, source, and review status.
+func buildClassifiedPRWithStatus(rt ReviewType, as AuthorSource, rs ReviewStatus) ClassifiedPR {
 	return ClassifiedPR{
 		PR:           github.PullRequest{Number: 1, CreatedAt: time.Now()},
 		ReviewType:   rt,
 		AuthorSource: as,
+		ReviewStatus: rs,
 	}
 }
 
@@ -191,33 +197,45 @@ func TestCriteriaFilter(t *testing.T) {
 	external := buildClassifiedPR(ReviewTypeCodeowner, AuthorSourceOther)
 	all := []ClassifiedPR{direct, codeowner, team, external}
 
+	// PRs with different review statuses for status-dimension tests.
+	openPR := buildClassifiedPRWithStatus(ReviewTypeDirect, AuthorSourceTeam, ReviewStatusOpen)
+	inReviewPR := buildClassifiedPRWithStatus(ReviewTypeDirect, AuthorSourceTeam, ReviewStatusInReview)
+	approvedPR := buildClassifiedPRWithStatus(ReviewTypeDirect, AuthorSourceTeam, ReviewStatusApproved)
+	statusAll := []ClassifiedPR{openPR, inReviewPR, approvedPR}
+
 	tests := []struct {
 		name     string
+		input    []ClassifiedPR
 		criteria FilterCriteria
 		want     []ClassifiedPR
 	}{
 		{
 			name:     "nil criteria matches all",
+			input:    all,
 			criteria: FilterCriteria{},
 			want:     all,
 		},
 		{
 			name:     "type-only: direct",
+			input:    all,
 			criteria: FilterCriteria{ReviewTypes: ReviewTypeSet{ReviewTypeDirect: true}},
 			want:     []ClassifiedPR{direct},
 		},
 		{
 			name:     "type-only: direct and codeowner",
+			input:    all,
 			criteria: FilterCriteria{ReviewTypes: ReviewTypeSet{ReviewTypeDirect: true, ReviewTypeCodeowner: true}},
 			want:     []ClassifiedPR{direct, codeowner, external},
 		},
 		{
 			name:     "source-only: TEAM",
+			input:    all,
 			criteria: FilterCriteria{AuthorSources: AuthorSourceSet{AuthorSourceTeam: true}},
 			want:     []ClassifiedPR{direct},
 		},
 		{
-			name: "combined: direct type AND TEAM source",
+			name:  "combined: direct type AND TEAM source",
+			input: all,
 			criteria: FilterCriteria{
 				ReviewTypes:   ReviewTypeSet{ReviewTypeDirect: true},
 				AuthorSources: AuthorSourceSet{AuthorSourceTeam: true},
@@ -225,7 +243,8 @@ func TestCriteriaFilter(t *testing.T) {
 			want: []ClassifiedPR{direct},
 		},
 		{
-			name: "combined: direct+codeowner AND TEAM+GROUP",
+			name:  "combined: direct+codeowner AND TEAM+GROUP",
+			input: all,
 			criteria: FilterCriteria{
 				ReviewTypes:   ReviewTypeSet{ReviewTypeDirect: true, ReviewTypeCodeowner: true},
 				AuthorSources: AuthorSourceSet{AuthorSourceTeam: true, AuthorSourceGroup: true},
@@ -234,15 +253,50 @@ func TestCriteriaFilter(t *testing.T) {
 		},
 		{
 			name:     "no match",
+			input:    all,
 			criteria: FilterCriteria{ReviewTypes: ReviewTypeSet{ReviewTypeTeam: true}, AuthorSources: AuthorSourceSet{AuthorSourceTeam: true}},
 			want:     []ClassifiedPR{},
+		},
+		// ReviewStatus dimension
+		{
+			name:     "status-only: open",
+			input:    statusAll,
+			criteria: FilterCriteria{ReviewStatuses: ReviewStatusSet{ReviewStatusOpen: true}},
+			want:     []ClassifiedPR{openPR},
+		},
+		{
+			name:     "status-only: in_review",
+			input:    statusAll,
+			criteria: FilterCriteria{ReviewStatuses: ReviewStatusSet{ReviewStatusInReview: true}},
+			want:     []ClassifiedPR{inReviewPR},
+		},
+		{
+			name:     "status-only: approved",
+			input:    statusAll,
+			criteria: FilterCriteria{ReviewStatuses: ReviewStatusSet{ReviewStatusApproved: true}},
+			want:     []ClassifiedPR{approvedPR},
+		},
+		{
+			name:     "status nil matches all statuses",
+			input:    statusAll,
+			criteria: FilterCriteria{},
+			want:     statusAll,
+		},
+		{
+			name:  "status open AND type direct",
+			input: statusAll,
+			criteria: FilterCriteria{
+				ReviewTypes:    ReviewTypeSet{ReviewTypeDirect: true},
+				ReviewStatuses: ReviewStatusSet{ReviewStatusOpen: true},
+			},
+			want: []ClassifiedPR{openPR},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			f := &CriteriaFilter{Criteria: tt.criteria}
-			got := f.Apply(all)
+			got := f.Apply(tt.input)
 			if len(got) != len(tt.want) {
 				t.Fatalf("Apply() returned %d PRs, want %d", len(got), len(tt.want))
 			}
