@@ -18,6 +18,7 @@ type reviewOptions struct {
 	filter       string
 	filterType   string
 	filterSource string
+	filterStatus string
 }
 
 var reviewOpts reviewOptions
@@ -26,7 +27,7 @@ var reviewCmd = &cobra.Command{
 	Use:   "review",
 	Short: "Show PRs awaiting my review",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		criteria, err := resolveFilter(reviewOpts.filter, reviewOpts.filterType, reviewOpts.filterSource)
+		criteria, err := resolveFilter(reviewOpts.filter, reviewOpts.filterType, reviewOpts.filterSource, reviewOpts.filterStatus)
 		if err != nil {
 			return err
 		}
@@ -67,15 +68,17 @@ var reviewCmd = &cobra.Command{
 		case "json":
 			type jsonPR struct {
 				github.PullRequest
-				ReviewType string `json:"reviewType,omitempty"`
-				Source     string `json:"source,omitempty"`
+				ReviewType   string `json:"reviewType,omitempty"`
+				Source       string `json:"source,omitempty"`
+				ReviewStatus string `json:"reviewStatus,omitempty"`
 			}
 			out := make([]jsonPR, len(results))
 			for i, cp := range results {
 				out[i] = jsonPR{
-					PullRequest: cp.PR,
-					ReviewType:  string(cp.ReviewType),
-					Source:      string(cp.AuthorSource),
+					PullRequest:  cp.PR,
+					ReviewType:   string(cp.ReviewType),
+					Source:       string(cp.AuthorSource),
+					ReviewStatus: string(cp.ReviewStatus),
 				}
 			}
 			return output.WriteJSON(cmd.OutOrStdout(), out)
@@ -92,26 +95,68 @@ func init() {
 	reviewCmd.Flags().StringVar(&reviewOpts.filter, "filter", "", "Filter preset: all|focus|nearby|org (default: all)")
 	reviewCmd.Flags().StringVar(&reviewOpts.filterType, "filter-type", "", "Filter by review type: direct|codeowner|team")
 	reviewCmd.Flags().StringVar(&reviewOpts.filterSource, "filter-source", "", "Filter by author source: TEAM|GROUP|ORG|OTHER")
+	reviewCmd.Flags().StringVar(&reviewOpts.filterStatus, "filter-status", "", "Filter by review status: open|in_review|approved|all")
 	reviewCmd.MarkFlagsMutuallyExclusive("filter", "filter-type")
 	reviewCmd.MarkFlagsMutuallyExclusive("filter", "filter-source")
 }
 
-// resolveFilter builds a FilterCriteria from the three filter flags.
+// resolveFilter builds a FilterCriteria from the filter flags.
 // Granular flags (filter-type, filter-source) take precedence and are ANDed together.
-// If neither granular flag is set, filter is treated as a preset name (default: "all").
-func resolveFilter(filter, filterType, filterSource string) (service.FilterCriteria, error) {
+// If neither granular flag is set, filter is treated as a preset name.
+// --filter-status is orthogonal: it overrides the preset's ReviewStatuses default when provided.
+// Default when no flags: ReviewStatuses={open: true} (FR-002).
+func resolveFilter(filter, filterType, filterSource, filterStatus string) (service.FilterCriteria, error) {
+	var criteria service.FilterCriteria
+	var err error
+
 	if filterType != "" || filterSource != "" {
-		return resolveGranular(filterType, filterSource)
+		criteria, err = resolveGranular(filterType, filterSource)
+		if err != nil {
+			return service.FilterCriteria{}, err
+		}
+		// Granular mode: apply default open status unless overridden.
+		criteria.ReviewStatuses = service.ReviewStatusSet{service.ReviewStatusOpen: true}
+	} else if filter != "" {
+		p := service.Preset(filter)
+		switch p {
+		case service.PresetAll, service.PresetFocus, service.PresetNearby, service.PresetOrg:
+			criteria = service.PresetCriteria(p)
+		default:
+			return service.FilterCriteria{}, fmt.Errorf("unknown filter preset %q: must be all, focus, nearby, or org", filter)
+		}
+	} else {
+		// No flags: default to open status only.
+		criteria = service.FilterCriteria{
+			ReviewStatuses: service.ReviewStatusSet{service.ReviewStatusOpen: true},
+		}
 	}
-	if filter == "" {
-		filter = "all"
+
+	// --filter-status overrides the preset/default ReviewStatuses.
+	if filterStatus != "" {
+		rs, err := resolveReviewStatus(filterStatus)
+		if err != nil {
+			return service.FilterCriteria{}, err
+		}
+		criteria.ReviewStatuses = rs
 	}
-	p := service.Preset(filter)
-	switch p {
-	case service.PresetAll, service.PresetFocus, service.PresetNearby, service.PresetOrg:
-		return service.PresetCriteria(p), nil
+
+	return criteria, nil
+}
+
+// resolveReviewStatus parses a --filter-status flag value into a ReviewStatusSet.
+// "all" returns nil (no filtering). Other valid values: open, in_review, approved.
+func resolveReviewStatus(filterStatus string) (service.ReviewStatusSet, error) {
+	switch filterStatus {
+	case "all":
+		return nil, nil
+	case string(service.ReviewStatusOpen):
+		return service.ReviewStatusSet{service.ReviewStatusOpen: true}, nil
+	case string(service.ReviewStatusInReview):
+		return service.ReviewStatusSet{service.ReviewStatusInReview: true}, nil
+	case string(service.ReviewStatusApproved):
+		return service.ReviewStatusSet{service.ReviewStatusApproved: true}, nil
 	default:
-		return service.FilterCriteria{}, fmt.Errorf("unknown filter preset %q: must be all, focus, nearby, or org", filter)
+		return nil, fmt.Errorf("unknown review status %q: must be open, in_review, approved, or all", filterStatus)
 	}
 }
 

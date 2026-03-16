@@ -9,6 +9,7 @@ type ClassifiedPR struct {
 	PR           github.PullRequest
 	ReviewType   ReviewType
 	AuthorSource AuthorSource
+	ReviewStatus ReviewStatus
 }
 
 // Fetcher fetches raw pull requests for an org.
@@ -48,7 +49,7 @@ type SourceClassifier struct {
 	Teams *TeamService
 }
 
-// ClassifyAll classifies each PR by delegating to Classify and ClassifyAuthorSource.
+// ClassifyAll classifies each PR by delegating to Classify, ClassifyAuthorSource, and ClassifyReviewStatus.
 func (c *SourceClassifier) ClassifyAll(prs []github.PullRequest) []ClassifiedPR {
 	result := make([]ClassifiedPR, len(prs))
 	for i, pr := range prs {
@@ -56,6 +57,7 @@ func (c *SourceClassifier) ClassifyAll(prs []github.PullRequest) []ClassifiedPR 
 			PR:           pr,
 			ReviewType:   Classify(pr, c.Login, c.Teams),
 			AuthorSource: ClassifyAuthorSource(pr, c.Login, c.Teams),
+			ReviewStatus: ClassifyReviewStatus(pr, c.Login, c.Teams),
 		}
 	}
 	return result

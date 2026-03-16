@@ -38,7 +38,7 @@ func WriteTable(w io.Writer, prs []service.ClassifiedPR) error {
 	})
 
 	tp := tableprinter.New(w, isTTY, width)
-	tp.AddHeader([]string{"REPO", "PR", "TITLE", "URL", "TYPE", "SOURCE", "AGE"})
+	tp.AddHeader([]string{"REPO", "PR", "TITLE", "URL", "TYPE", "SOURCE", "STATUS", "AGE"})
 
 	for _, cp := range prs {
 		pr := cp.PR
@@ -46,6 +46,7 @@ func WriteTable(w io.Writer, prs []service.ClassifiedPR) error {
 		prNum := fmt.Sprintf("#%d", pr.Number)
 		rt := reviewTypeLabel(cp.ReviewType)
 		src := authorSourceLabel(cp.AuthorSource)
+		status := reviewStatusLabel(cp.ReviewStatus)
 		age := humanAge(pr.CreatedAt)
 
 		tp.AddField(repo)
@@ -54,6 +55,7 @@ func WriteTable(w io.Writer, prs []service.ClassifiedPR) error {
 		tp.AddField(pr.URL)
 		tp.AddField(rt, tableprinter.WithColor(reviewTypeColor(rt)))
 		tp.AddField(src, tableprinter.WithColor(authorSourceColor(src)))
+		tp.AddField(status, tableprinter.WithColor(reviewStatusColor(status)))
 		tp.AddField(age)
 		tp.EndRow()
 	}
@@ -80,6 +82,29 @@ func reviewTypeColor(rt string) func(string) string {
 		return func(s string) string { return "\033[33m" + s + "\033[0m" } // yellow
 	default: // codeowner or "-"
 		return func(s string) string { return "\033[36m" + s + "\033[0m" } // cyan
+	}
+}
+
+// reviewStatusLabel converts a ReviewStatus to its display string.
+// An empty ReviewStatus renders as "-".
+func reviewStatusLabel(s service.ReviewStatus) string {
+	if s == "" {
+		return "-"
+	}
+	return string(s)
+}
+
+// reviewStatusColor returns an ANSI color function for the given review status label.
+func reviewStatusColor(status string) func(string) string {
+	switch status {
+	case "open":
+		return func(s string) string { return "\033[31m" + s + "\033[0m" } // red
+	case "in_review":
+		return func(s string) string { return "\033[33m" + s + "\033[0m" } // yellow
+	case "approved":
+		return func(s string) string { return "\033[32m" + s + "\033[0m" } // green
+	default: // "-"
+		return func(s string) string { return s } // default
 	}
 }
 

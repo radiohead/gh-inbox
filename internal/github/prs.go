@@ -51,6 +51,14 @@ func convertSearchPRNode(n searchPRNode) PullRequest {
 		})
 	}
 
+	reviews := make([]Review, 0, len(n.Reviews.Nodes))
+	for _, rv := range n.Reviews.Nodes {
+		reviews = append(reviews, Review{
+			Author: rv.Author.Login,
+			State:  rv.State,
+		})
+	}
+
 	owner, name := splitNameWithOwner(n.Repository.NameWithOwner)
 	return PullRequest{
 		Number:    n.Number,
@@ -65,6 +73,7 @@ func convertSearchPRNode(n searchPRNode) PullRequest {
 		ReviewRequests: ReviewRequestConnection{
 			Nodes: requests,
 		},
+		Reviews: reviews,
 	}
 }
 

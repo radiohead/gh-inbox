@@ -2,6 +2,28 @@ package github
 
 import "time"
 
+// ReviewState represents the state of a pull request review.
+type ReviewState string
+
+const (
+	ReviewStateApproved         ReviewState = "APPROVED"
+	ReviewStateChangesRequested ReviewState = "CHANGES_REQUESTED"
+	ReviewStateCommented        ReviewState = "COMMENTED"
+	ReviewStatePending          ReviewState = "PENDING"
+	ReviewStateDismissed        ReviewState = "DISMISSED"
+)
+
+// Review represents a single review submitted on a pull request.
+type Review struct {
+	Author string      `json:"author"`
+	State  ReviewState `json:"state"`
+}
+
+// ReviewConnection holds the list of reviews on a PR.
+type ReviewConnection struct {
+	Nodes []Review `json:"nodes"`
+}
+
 // PullRequest represents a GitHub pull request with review request information.
 type PullRequest struct {
 	Number         int                     `json:"number"`
@@ -11,6 +33,7 @@ type PullRequest struct {
 	CreatedAt      time.Time               `json:"createdAt"`
 	Repository     Repository              `json:"repository"`
 	ReviewRequests ReviewRequestConnection `json:"reviewRequests"`
+	Reviews        []Review                `json:"reviews"`
 }
 
 // Repository identifies the repository a PR belongs to.

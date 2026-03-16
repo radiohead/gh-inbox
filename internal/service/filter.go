@@ -11,8 +11,9 @@ type AuthorSourceSet map[AuthorSource]bool
 // FilterCriteria specifies which PRs to include.
 // A nil set matches all values on that dimension.
 type FilterCriteria struct {
-	ReviewTypes   ReviewTypeSet   // nil = match all
-	AuthorSources AuthorSourceSet // nil = match all
+	ReviewTypes    ReviewTypeSet    // nil = match all
+	AuthorSources  AuthorSourceSet  // nil = match all
+	ReviewStatuses ReviewStatusSet  // nil = match all
 }
 
 // Matches reports whether cp satisfies the criteria.
@@ -21,6 +22,9 @@ func (fc FilterCriteria) Matches(cp ClassifiedPR) bool {
 		return false
 	}
 	if fc.AuthorSources != nil && !fc.AuthorSources[cp.AuthorSource] {
+		return false
+	}
+	if fc.ReviewStatuses != nil && !fc.ReviewStatuses[cp.ReviewStatus] {
 		return false
 	}
 	return true
@@ -58,14 +62,16 @@ func PresetCriteria(p Preset) FilterCriteria {
 	case PresetFocus:
 		// Highest-priority: my team's PRs where I'm directly responsible.
 		return FilterCriteria{
-			ReviewTypes:   ReviewTypeSet{ReviewTypeDirect: true, ReviewTypeCodeowner: true},
-			AuthorSources: AuthorSourceSet{AuthorSourceTeam: true},
+			ReviewTypes:    ReviewTypeSet{ReviewTypeDirect: true, ReviewTypeCodeowner: true},
+			AuthorSources:  AuthorSourceSet{AuthorSourceTeam: true},
+			ReviewStatuses: ReviewStatusSet{ReviewStatusOpen: true},
 		}
 	case PresetNearby:
 		// Expand to sibling teams.
 		return FilterCriteria{
-			ReviewTypes:   ReviewTypeSet{ReviewTypeDirect: true, ReviewTypeCodeowner: true},
-			AuthorSources: AuthorSourceSet{AuthorSourceTeam: true, AuthorSourceGroup: true},
+			ReviewTypes:    ReviewTypeSet{ReviewTypeDirect: true, ReviewTypeCodeowner: true},
+			AuthorSources:  AuthorSourceSet{AuthorSourceTeam: true, AuthorSourceGroup: true},
+			ReviewStatuses: ReviewStatusSet{ReviewStatusOpen: true},
 		}
 	case PresetOrg:
 		// All org PRs, excluding external contributors.
@@ -75,6 +81,7 @@ func PresetCriteria(p Preset) FilterCriteria {
 				AuthorSourceGroup: true,
 				AuthorSourceOrg:   true,
 			},
+			// ReviewStatuses nil = match all
 		}
 	default: // PresetAll or unknown
 		return FilterCriteria{} // nil sets = match all
