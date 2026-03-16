@@ -4,6 +4,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/cli/go-gh/v2/pkg/api"
 	graphql "github.com/cli/shurcooL-graphql"
 )
 
@@ -160,6 +161,61 @@ func TestFetchReviewRequestedPRs(t *testing.T) {
 					},
 				},
 			},
+		},
+		{
+			name: "SAML partial data: valid nodes returned, zero-value nodes skipped, no error",
+			org:  "saml-org",
+			queryFunc: func(_ string, q interface{}, _ map[string]interface{}) error {
+				result := q.(*searchReviewRequestedQuery)
+				result.Search.Nodes = []struct {
+					PullRequest searchPRNode `graphql:"... on PullRequest"`
+				}{
+					{
+						PullRequest: searchPRNode{
+							Number: 42,
+							Title:  "Accessible PR",
+							URL:    "https://github.com/saml-org/repo/pull/42",
+							Author: struct{ Login string }{Login: "alice"},
+							Repository: struct{ NameWithOwner string }{
+								NameWithOwner: "saml-org/repo",
+							},
+						},
+					},
+					{
+						// Zero-valued node from SAML-blocked result.
+						PullRequest: searchPRNode{},
+					},
+				}
+				return &api.GraphQLError{
+					Errors: []api.GraphQLErrorItem{
+						{Message: "Resource protected by organization SAML enforcement"},
+					},
+				}
+			},
+			want: []PullRequest{
+				{
+					Number:     42,
+					Title:      "Accessible PR",
+					URL:        "https://github.com/saml-org/repo/pull/42",
+					Author:     "alice",
+					Repository: Repository{Owner: "saml-org", Name: "repo"},
+					ReviewRequests: ReviewRequestConnection{
+						Nodes: []ReviewRequest{},
+					},
+				},
+			},
+		},
+		{
+			name: "non-SAML GraphQL error propagates",
+			org:  "test-org",
+			queryFunc: func(_ string, _ interface{}, _ map[string]interface{}) error {
+				return &api.GraphQLError{
+					Errors: []api.GraphQLErrorItem{
+						{Message: "Could not resolve to a Repository with the name 'test-org/missing'."},
+					},
+				}
+			},
+			wantErr: true,
 		},
 		{
 			name: "correct query string sent for org",

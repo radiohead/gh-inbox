@@ -1,13 +1,20 @@
 package github
 
 import (
+	"fmt"
+	"os"
 	"strings"
 
 	graphql "github.com/cli/shurcooL-graphql"
+
+	gherrors "github.com/radiohead/gh-inbox/internal/errors"
 )
 
 // FetchReviewRequestedPRs fetches open PRs in org where review has been
 // requested from the current user, returning unfiltered results.
+//
+// If the GraphQL query returns a SAML-enforcement error, the function logs a
+// warning to stderr and returns whatever partial data GitHub provided.
 func (c *Client) FetchReviewRequestedPRs(org string) ([]PullRequest, error) {
 	var q searchReviewRequestedQuery
 	variables := map[string]interface{}{
@@ -15,11 +22,24 @@ func (c *Client) FetchReviewRequestedPRs(org string) ([]PullRequest, error) {
 		"first": graphql.Int(50),
 	}
 	if err := c.gql.Query("SearchReviewRequestedPRs", &q, variables); err != nil {
-		return nil, err
+		classified := gherrors.Classify(err, gherrors.GitHubClassifiers...)
+		switch classified.Severity() {
+		case gherrors.SeverityWarning:
+			fmt.Fprintf(os.Stderr, "warning: %s\n", classified.Summary())
+			// fall through — partial data may be available in q
+		case gherrors.SeveritySilent:
+			// fall through — ignore silently
+		default:
+			return nil, err
+		}
 	}
 
 	prs := make([]PullRequest, 0, len(q.Search.Nodes))
 	for _, node := range q.Search.Nodes {
+		// SAML-blocked nodes are zero-valued (empty URL); skip them.
+		if node.PullRequest.URL == "" {
+			continue
+		}
 		prs = append(prs, convertSearchPRNode(node.PullRequest))
 	}
 	return prs, nil
