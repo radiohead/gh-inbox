@@ -1,6 +1,7 @@
 package github
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -16,6 +17,18 @@ import (
 // If the GraphQL query returns a SAML-enforcement error, the function logs a
 // warning to stderr and returns whatever partial data GitHub provided.
 func (c *Client) FetchReviewRequestedPRs(org string) ([]PullRequest, error) {
+	cacheKey := "review-prs:" + org
+
+	if c.prCache != nil && !c.skipPRCacheRead {
+		data, found, err := c.prCache.Get(cacheKey)
+		if err == nil && found {
+			var cached []PullRequest
+			if jsonErr := json.Unmarshal(data, &cached); jsonErr == nil {
+				return cached, nil
+			}
+		}
+	}
+
 	var q searchReviewRequestedQuery
 	variables := map[string]interface{}{
 		"query": graphql.String(buildReviewRequestedSearchQuery(org)),
@@ -42,6 +55,13 @@ func (c *Client) FetchReviewRequestedPRs(org string) ([]PullRequest, error) {
 		}
 		prs = append(prs, convertSearchPRNode(node.PullRequest))
 	}
+
+	if c.prCache != nil {
+		if data, err := json.Marshal(prs); err == nil {
+			_ = c.prCache.Set(cacheKey, data)
+		}
+	}
+
 	return prs, nil
 }
 

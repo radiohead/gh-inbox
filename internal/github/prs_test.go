@@ -1,6 +1,7 @@
 package github
 
 import (
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -350,4 +351,208 @@ func TestConvertSearchPRNode_Reviews(t *testing.T) {
 			}
 		})
 	}
+}
+
+// makeSinglePRQueryFunc returns a queryFunc that populates q with one PR.
+func makeSinglePRQueryFunc(number int, url, org string) func(string, interface{}, map[string]interface{}) error {
+	return func(_ string, q interface{}, _ map[string]interface{}) error {
+		result := q.(*searchReviewRequestedQuery)
+		result.Search.Nodes = []struct {
+			PullRequest searchPRNode `graphql:"... on PullRequest"`
+		}{
+			{
+				PullRequest: searchPRNode{
+					Number: number,
+					Title:  "Test PR",
+					URL:    url,
+					Repository: struct{ NameWithOwner string }{
+						NameWithOwner: org + "/repo",
+					},
+				},
+			},
+		}
+		return nil
+	}
+}
+
+func TestFetchReviewRequestedPRsWithPRCache(t *testing.T) {
+	const org = "myorg"
+	const cacheKey = "review-prs:myorg"
+	const prURL = "https://github.com/myorg/repo/pull/1"
+
+	t.Run("cache miss: calls GraphQL and writes result to cache", func(t *testing.T) {
+		gqlCalled := false
+		gql := &mockGraphQLDoer{queryFunc: func(name string, q interface{}, vars map[string]interface{}) error {
+			gqlCalled = true
+			return makeSinglePRQueryFunc(1, prURL, org)(name, q, vars)
+		}}
+		cacher := newMockCacher()
+		client := NewClientWithDoer(gql)
+		client.prCache = cacher
+
+		prs, err := client.FetchReviewRequestedPRs(org)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(prs) != 1 {
+			t.Fatalf("got %d PRs, want 1", len(prs))
+		}
+		if !gqlCalled {
+			t.Error("expected GraphQL to be called on cache miss")
+		}
+		data, found := cacher.store[cacheKey]
+		if !found {
+			t.Fatal("expected cache entry to be written after miss")
+		}
+		var cached []PullRequest
+		if err := json.Unmarshal(data, &cached); err != nil {
+			t.Fatalf("cache value not valid JSON: %v", err)
+		}
+		if len(cached) != 1 || cached[0].URL != prURL {
+			t.Errorf("cached PR URL = %q, want %q", cached[0].URL, prURL)
+		}
+	})
+
+	t.Run("cache hit: returns cached PRs without calling GraphQL", func(t *testing.T) {
+		gqlCalled := false
+		gql := &mockGraphQLDoer{queryFunc: func(_ string, _ interface{}, _ map[string]interface{}) error {
+			gqlCalled = true
+			return nil
+		}}
+		cacher := newMockCacher()
+		cachedPRs := []PullRequest{{Number: 99, URL: prURL, Repository: Repository{Owner: org, Name: "repo"}}}
+		data, _ := json.Marshal(cachedPRs)
+		cacher.store[cacheKey] = data
+
+		client := NewClientWithDoer(gql)
+		client.prCache = cacher
+
+		prs, err := client.FetchReviewRequestedPRs(org)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if gqlCalled {
+			t.Error("expected GraphQL NOT to be called on cache hit")
+		}
+		if len(prs) != 1 || prs[0].Number != 99 {
+			t.Errorf("got PR number %d, want 99", prs[0].Number)
+		}
+	})
+
+	t.Run("refresh bypass: skips cache read, calls GraphQL, overwrites cache", func(t *testing.T) {
+		gqlCalled := false
+		gql := &mockGraphQLDoer{queryFunc: func(name string, q interface{}, vars map[string]interface{}) error {
+			gqlCalled = true
+			return makeSinglePRQueryFunc(2, prURL, org)(name, q, vars)
+		}}
+		cacher := newMockCacher()
+		// Pre-populate cache with stale data.
+		stalePRs := []PullRequest{{Number: 99, URL: "https://github.com/myorg/repo/pull/99"}}
+		staleData, _ := json.Marshal(stalePRs)
+		cacher.store[cacheKey] = staleData
+
+		client := NewClientWithDoer(gql)
+		client.prCache = cacher
+		client.skipPRCacheRead = true
+
+		prs, err := client.FetchReviewRequestedPRs(org)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !gqlCalled {
+			t.Error("expected GraphQL to be called when skipPRCacheRead is true")
+		}
+		if len(prs) != 1 || prs[0].Number != 2 {
+			t.Errorf("got PR number %d, want 2", prs[0].Number)
+		}
+		// Cache should be overwritten with fresh data.
+		newData, found := cacher.store[cacheKey]
+		if !found {
+			t.Fatal("expected cache entry to be written after refresh")
+		}
+		var newCached []PullRequest
+		if err := json.Unmarshal(newData, &newCached); err != nil {
+			t.Fatalf("cache value not valid JSON: %v", err)
+		}
+		if len(newCached) != 1 || newCached[0].Number != 2 {
+			t.Errorf("cache entry PR number = %d, want 2", newCached[0].Number)
+		}
+	})
+
+	t.Run("cache Get error: proceeds to GraphQL", func(t *testing.T) {
+		gqlCalled := false
+		gql := &mockGraphQLDoer{queryFunc: func(name string, q interface{}, vars map[string]interface{}) error {
+			gqlCalled = true
+			return makeSinglePRQueryFunc(1, prURL, org)(name, q, vars)
+		}}
+		cacher := newMockCacher()
+		cacher.getErr = errors.New("cache read failure")
+
+		client := NewClientWithDoer(gql)
+		client.prCache = cacher
+
+		prs, err := client.FetchReviewRequestedPRs(org)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !gqlCalled {
+			t.Error("expected GraphQL to be called when cache.Get returns error")
+		}
+		if len(prs) != 1 {
+			t.Fatalf("got %d PRs, want 1", len(prs))
+		}
+	})
+
+	t.Run("SAML partial data: partial results returned and cached", func(t *testing.T) {
+		gql := &mockGraphQLDoer{queryFunc: func(_ string, q interface{}, _ map[string]interface{}) error {
+			result := q.(*searchReviewRequestedQuery)
+			result.Search.Nodes = []struct {
+				PullRequest searchPRNode `graphql:"... on PullRequest"`
+			}{
+				{
+					PullRequest: searchPRNode{
+						Number: 42,
+						Title:  "Accessible PR",
+						URL:    prURL,
+						Author: struct{ Login string }{Login: "alice"},
+						Repository: struct{ NameWithOwner string }{
+							NameWithOwner: "myorg/repo",
+						},
+					},
+				},
+				{
+					// Zero-valued node from SAML-blocked result.
+					PullRequest: searchPRNode{},
+				},
+			}
+			return &api.GraphQLError{
+				Errors: []api.GraphQLErrorItem{
+					{Message: "Resource protected by organization SAML enforcement"},
+				},
+			}
+		}}
+		cacher := newMockCacher()
+		client := NewClientWithDoer(gql)
+		client.prCache = cacher
+
+		prs, err := client.FetchReviewRequestedPRs(org)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(prs) != 1 || prs[0].Number != 42 {
+			t.Fatalf("got %d PRs, want 1 with number 42", len(prs))
+		}
+		// Partial data should be cached.
+		data, found := cacher.store[cacheKey]
+		if !found {
+			t.Fatal("expected cache entry to be written with partial SAML data")
+		}
+		var cached []PullRequest
+		if err := json.Unmarshal(data, &cached); err != nil {
+			t.Fatalf("cache value not valid JSON: %v", err)
+		}
+		if len(cached) != 1 || cached[0].Number != 42 {
+			t.Errorf("cached PR number = %d, want 42", cached[0].Number)
+		}
+	})
 }
