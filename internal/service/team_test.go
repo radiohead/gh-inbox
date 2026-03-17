@@ -464,6 +464,67 @@ func TestIsSiblingTeamMemberPartialChildFetchError(t *testing.T) {
 	}
 }
 
+func TestPreloadTeams(t *testing.T) {
+	tests := []struct {
+		name       string
+		myTeamsErr error
+		wantErr    bool
+	}{
+		{
+			name:    "success: no error returned",
+			wantErr: false,
+		},
+		{
+			name:       "error: propagated from FetchMyTeams",
+			myTeamsErr: errors.New("unauthorized"),
+			wantErr:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fetcher := &mockFetcher{
+				fetchFunc: func(org, slug string) ([]github.TeamMember, error) { return nil, nil },
+				myTeamsFunc: func() ([]github.UserTeam, error) {
+					if tt.myTeamsErr != nil {
+						return nil, tt.myTeamsErr
+					}
+					return []github.UserTeam{{Slug: "backend"}}, nil
+				},
+			}
+			svc := NewTeamService(fetcher)
+			err := svc.PreloadTeams()
+			if tt.wantErr && err == nil {
+				t.Error("PreloadTeams() = nil, want error")
+			}
+			if !tt.wantErr && err != nil {
+				t.Errorf("PreloadTeams() = %v, want nil", err)
+			}
+		})
+	}
+}
+
+func TestPreloadTeamsCaching(t *testing.T) {
+	callCount := 0
+	fetcher := &mockFetcher{
+		fetchFunc: func(org, slug string) ([]github.TeamMember, error) { return nil, nil },
+		myTeamsFunc: func() ([]github.UserTeam, error) {
+			callCount++
+			return []github.UserTeam{{Slug: "backend", Organization: github.TeamOrganization{Login: "acme"}}}, nil
+		},
+	}
+	svc := NewTeamService(fetcher)
+
+	// PreloadTeams followed by SharesTeamWith — FetchMyTeams should only be
+	// called once (the pre-loaded result is reused by loadMyTeams).
+	_ = svc.PreloadTeams()
+	svc.SharesTeamWith("acme", "bob")
+
+	if callCount != 1 {
+		t.Errorf("FetchMyTeams called %d times, want 1 (preloaded result should be reused)", callCount)
+	}
+}
+
 func TestIsSiblingTeamMemberChildCaching(t *testing.T) {
 	childCallCount := 0
 	fetcher := &mockFetcher{

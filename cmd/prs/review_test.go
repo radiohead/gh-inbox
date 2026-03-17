@@ -6,6 +6,19 @@ import (
 	"github.com/radiohead/gh-inbox/internal/service"
 )
 
+func TestReviewCmdRefreshFlag(t *testing.T) {
+	f := reviewCmd.Flags().Lookup("refresh")
+	if f == nil {
+		t.Fatal("--refresh flag is not registered on review command")
+	}
+	if f.Value.Type() != "bool" {
+		t.Errorf("--refresh flag type = %q, want %q", f.Value.Type(), "bool")
+	}
+	if f.DefValue != "false" {
+		t.Errorf("--refresh default value = %q, want %q", f.DefValue, "false")
+	}
+}
+
 func TestResolveFilter(t *testing.T) {
 	openStatus := service.ReviewStatusSet{service.ReviewStatusOpen: true}
 

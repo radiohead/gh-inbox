@@ -1,7 +1,7 @@
 ---
 type: feature-spec
 title: "Optimize prs review command performance (~8s to <3s)"
-status: approved
+status: done
 beads_id: inbox-2b5
 created: 2026-03-17
 ---
