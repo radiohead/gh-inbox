@@ -8,6 +8,37 @@ import (
 	"github.com/cli/go-gh/v2/pkg/api"
 )
 
+// mockCacher is a test double for Cacher.
+type mockCacher struct {
+	store    map[string][]byte
+	getErr   error
+	setErr   error
+	getCalls []string
+	setCalls []string
+}
+
+func newMockCacher() *mockCacher {
+	return &mockCacher{store: make(map[string][]byte)}
+}
+
+func (m *mockCacher) Get(key string) ([]byte, bool, error) {
+	m.getCalls = append(m.getCalls, key)
+	if m.getErr != nil {
+		return nil, false, m.getErr
+	}
+	data, found := m.store[key]
+	return data, found, nil
+}
+
+func (m *mockCacher) Set(key string, data []byte) error {
+	m.setCalls = append(m.setCalls, key)
+	if m.setErr != nil {
+		return m.setErr
+	}
+	m.store[key] = data
+	return nil
+}
+
 // mockRESTDoer is a test double for restDoer.
 type mockRESTDoer struct {
 	getFunc func(path string, resp interface{}) error
@@ -214,4 +245,146 @@ func TestFetchIsOrgMember(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestFetchIsOrgMemberWithCache(t *testing.T) {
+	const org = "myorg"
+	const login = "alice"
+	const cacheKey = "org-member:myorg:alice"
+
+	t.Run("cache miss: calls API and writes true to cache", func(t *testing.T) {
+		apiCalled := false
+		rest := &mockRESTDoer{getFunc: func(path string, resp interface{}) error {
+			apiCalled = true
+			return nil // 204 member
+		}}
+		cacher := newMockCacher()
+		client := NewClientWithDoers(nil, rest)
+		client.cache = cacher
+
+		got, err := client.FetchIsOrgMember(org, login)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !got {
+			t.Errorf("FetchIsOrgMember = false, want true")
+		}
+		if !apiCalled {
+			t.Error("expected API to be called on cache miss")
+		}
+		data, found := cacher.store[cacheKey]
+		if !found {
+			t.Fatal("expected cache entry to be written")
+		}
+		if string(data) != "true" {
+			t.Errorf("cache value = %q, want %q", string(data), "true")
+		}
+	})
+
+	t.Run("cache hit true: returns true without API call", func(t *testing.T) {
+		apiCalled := false
+		rest := &mockRESTDoer{getFunc: func(path string, resp interface{}) error {
+			apiCalled = true
+			return nil
+		}}
+		cacher := newMockCacher()
+		cacher.store[cacheKey] = []byte("true")
+		client := NewClientWithDoers(nil, rest)
+		client.cache = cacher
+
+		got, err := client.FetchIsOrgMember(org, login)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !got {
+			t.Errorf("FetchIsOrgMember = false, want true")
+		}
+		if apiCalled {
+			t.Error("expected API NOT to be called on cache hit")
+		}
+	})
+
+	t.Run("cache hit false: returns false without API call", func(t *testing.T) {
+		apiCalled := false
+		rest := &mockRESTDoer{getFunc: func(path string, resp interface{}) error {
+			apiCalled = true
+			return nil
+		}}
+		cacher := newMockCacher()
+		cacher.store["org-member:myorg:bob"] = []byte("false")
+		client := NewClientWithDoers(nil, rest)
+		client.cache = cacher
+
+		got, err := client.FetchIsOrgMember(org, "bob")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got {
+			t.Errorf("FetchIsOrgMember = true, want false")
+		}
+		if apiCalled {
+			t.Error("expected API NOT to be called on cache hit")
+		}
+	})
+
+	t.Run("cache Get error: falls through to API call", func(t *testing.T) {
+		apiCalled := false
+		rest := &mockRESTDoer{getFunc: func(path string, resp interface{}) error {
+			apiCalled = true
+			return nil // API succeeds
+		}}
+		cacher := newMockCacher()
+		cacher.getErr = errors.New("cache read error")
+		client := NewClientWithDoers(nil, rest)
+		client.cache = cacher
+
+		got, err := client.FetchIsOrgMember(org, login)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !got {
+			t.Errorf("FetchIsOrgMember = false, want true")
+		}
+		if !apiCalled {
+			t.Error("expected API to be called when cache Get returns error")
+		}
+	})
+
+	t.Run("cache Set error: returns correct result, ignores Set error", func(t *testing.T) {
+		rest := &mockRESTDoer{getFunc: func(path string, resp interface{}) error {
+			return nil // 204 member
+		}}
+		cacher := newMockCacher()
+		cacher.setErr = errors.New("cache write error")
+		client := NewClientWithDoers(nil, rest)
+		client.cache = cacher
+
+		got, err := client.FetchIsOrgMember(org, login)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !got {
+			t.Errorf("FetchIsOrgMember = false, want true")
+		}
+	})
+
+	t.Run("API error: returns false and error, does not write to cache", func(t *testing.T) {
+		rest := &mockRESTDoer{getFunc: func(path string, resp interface{}) error {
+			return fmt.Errorf("network error")
+		}}
+		cacher := newMockCacher()
+		client := NewClientWithDoers(nil, rest)
+		client.cache = cacher
+
+		got, err := client.FetchIsOrgMember(org, login)
+		if err == nil {
+			t.Error("expected error, got nil")
+		}
+		if got {
+			t.Errorf("FetchIsOrgMember = true, want false on API error")
+		}
+		if len(cacher.setCalls) > 0 {
+			t.Error("expected no cache writes on API error")
+		}
+	})
 }
