@@ -51,7 +51,7 @@ func TestFetchReviewRequestedPRs(t *testing.T) {
 										AsCodeOwner: false,
 										RequestedReviewer: struct {
 											User     struct{ Login string } `graphql:"... on User"`
-											Team     struct{ Name, Slug string } `graphql:"... on Team"`
+											Team     struct{ Slug string } `graphql:"... on Team"`
 											TypeName string                     `graphql:"__typename"`
 										}{
 											User:     struct{ Login string }{Login: "alice"},
@@ -62,10 +62,10 @@ func TestFetchReviewRequestedPRs(t *testing.T) {
 										AsCodeOwner: true,
 										RequestedReviewer: struct {
 											User     struct{ Login string } `graphql:"... on User"`
-											Team     struct{ Name, Slug string } `graphql:"... on Team"`
+											Team     struct{ Slug string } `graphql:"... on Team"`
 											TypeName string                     `graphql:"__typename"`
 										}{
-											Team:     struct{ Name, Slug string }{Name: "backend", Slug: "backend-team"},
+											Team:     struct{ Slug string }{Slug: "backend-team"},
 											TypeName: "Team",
 										},
 									},
@@ -134,7 +134,7 @@ func TestFetchReviewRequestedPRs(t *testing.T) {
 										AsCodeOwner: true,
 										RequestedReviewer: struct {
 											User     struct{ Login string } `graphql:"... on User"`
-											Team     struct{ Name, Slug string } `graphql:"... on Team"`
+											Team     struct{ Slug string } `graphql:"... on Team"`
 											TypeName string                     `graphql:"__typename"`
 										}{
 											User:     struct{ Login string }{Login: "bob"},
