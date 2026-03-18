@@ -150,3 +150,12 @@ func (s *TeamService) loadMyTeams() []github.UserTeam {
 	}
 	return s.myTeams
 }
+
+// PreloadTeams pre-fetches the authenticated user's teams into the in-process
+// cache so that concurrent callers can invoke ClassifyAll without a lazy fetch.
+// Returns the error from FetchMyTeams, if any; the fail-closed behavior of
+// SharesTeamWith and IsSiblingTeamMember is unaffected.
+func (s *TeamService) PreloadTeams() error {
+	s.loadMyTeams()
+	return s.myErr
+}

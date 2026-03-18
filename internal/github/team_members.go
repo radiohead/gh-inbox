@@ -132,14 +132,39 @@ func (c *Client) FetchChildTeams(org, parentSlug string) ([]ChildTeam, error) {
 
 // FetchIsOrgMember reports whether login is a member of the given organization.
 // The GitHub REST API returns 204 for members and 404 for non-members.
+// If a Cacher is configured on the Client, results are read from and written
+// to the cache to avoid redundant API calls. Cache errors are silently ignored.
+// On API error (non-404), the function returns false, err without writing to cache.
 func (c *Client) FetchIsOrgMember(org, login string) (bool, error) {
+	cacheKey := "org-member:" + org + ":" + login
+
+	if c.cache != nil {
+		data, found, err := c.cache.Get(cacheKey)
+		if err == nil && found {
+			var cached bool
+			if jsonErr := json.Unmarshal(data, &cached); jsonErr == nil {
+				return cached, nil
+			}
+		}
+	}
+
 	path := fmt.Sprintf("orgs/%s/members/%s", org, login)
 	err := c.rest.Get(path, nil)
 	if err == nil {
+		if c.cache != nil {
+			if data, jsonErr := json.Marshal(true); jsonErr == nil {
+				_ = c.cache.Set(cacheKey, data)
+			}
+		}
 		return true, nil
 	}
 	var httpErr *api.HTTPError
 	if errors.As(err, &httpErr) && httpErr.StatusCode == 404 {
+		if c.cache != nil {
+			if data, jsonErr := json.Marshal(false); jsonErr == nil {
+				_ = c.cache.Set(cacheKey, data)
+			}
+		}
 		return false, nil
 	}
 	return false, fmt.Errorf("checking org membership for %s/%s: %w", org, login, err)

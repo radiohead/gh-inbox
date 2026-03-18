@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/radiohead/gh-inbox/internal/cache"
 	"github.com/radiohead/gh-inbox/internal/github"
@@ -19,6 +21,7 @@ type reviewOptions struct {
 	filterType   string
 	filterSource string
 	filterStatus string
+	refresh      bool
 }
 
 var reviewOpts reviewOptions
@@ -36,9 +39,20 @@ var reviewCmd = &cobra.Command{
 		if cacheErr != nil {
 			fmt.Fprintf(os.Stderr, "warning: could not initialize disk cache: %v\n", cacheErr)
 		}
+		prCache, prCacheErr := cache.NewDiskCacher("", 5*time.Minute)
+		if prCacheErr != nil {
+			fmt.Fprintf(os.Stderr, "warning: could not initialize PR disk cache: %v\n", prCacheErr)
+		}
+
 		var opts []github.ClientOption
 		if diskCache != nil {
 			opts = append(opts, github.WithCache(diskCache))
+		}
+		if prCache != nil {
+			opts = append(opts, github.WithPRCache(prCache))
+		}
+		if reviewOpts.refresh {
+			opts = append(opts, github.WithRefresh())
 		}
 
 		client, err := github.NewClient(opts...)
@@ -53,16 +67,23 @@ var reviewCmd = &cobra.Command{
 		svc := service.NewTeamService(client)
 		classifier := &service.SourceClassifier{Login: login, Teams: svc}
 
-		pipeline := service.NewPipeline(
-			service.FetchFunc(client.FetchReviewRequestedPRs),
-			classifier,
-			&service.CriteriaFilter{Criteria: criteria},
-		)
-
-		results, err := pipeline.Run(reviewOpts.org)
-		if err != nil {
+		var prs []github.PullRequest
+		g := new(errgroup.Group)
+		g.Go(func() error {
+			var fetchErr error
+			prs, fetchErr = client.FetchReviewRequestedPRs(reviewOpts.org)
+			return fetchErr
+		})
+		g.Go(func() error {
+			_ = svc.PreloadTeams() // fail-closed: error is stored in TeamService
+			return nil
+		})
+		if err := g.Wait(); err != nil {
 			return fmt.Errorf("fetching PRs: %w", err)
 		}
+
+		classified := classifier.ClassifyAll(prs)
+		results := (&service.CriteriaFilter{Criteria: criteria}).Apply(classified)
 
 		switch outputFormat {
 		case "json":
@@ -96,6 +117,7 @@ func init() {
 	reviewCmd.Flags().StringVar(&reviewOpts.filterType, "filter-type", "", "Filter by review type: direct|codeowner|team")
 	reviewCmd.Flags().StringVar(&reviewOpts.filterSource, "filter-source", "", "Filter by author source: TEAM|GROUP|ORG|OTHER")
 	reviewCmd.Flags().StringVar(&reviewOpts.filterStatus, "filter-status", "", "Filter by review status: open|in_review|approved|all")
+	reviewCmd.Flags().BoolVar(&reviewOpts.refresh, "refresh", false, "Bypass PR cache and fetch fresh data from GitHub")
 	reviewCmd.MarkFlagsMutuallyExclusive("filter", "filter-type")
 	reviewCmd.MarkFlagsMutuallyExclusive("filter", "filter-source")
 }

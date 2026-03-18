@@ -51,7 +51,6 @@ type searchReviewRequestNode struct {
 			Login string
 		} `graphql:"... on User"`
 		Team struct {
-			Name string
 			Slug string
 		} `graphql:"... on Team"`
 		TypeName string `graphql:"__typename"`

@@ -23,9 +23,11 @@ type Cacher interface {
 
 // Client wraps a GraphQL client for GitHub API access.
 type Client struct {
-	gql   graphQLDoer
-	rest  restDoer
-	cache Cacher // optional; nil means no caching
+	gql              graphQLDoer
+	rest             restDoer
+	cache            Cacher // optional; nil means no caching
+	prCache          Cacher // optional; separate cache for PR data (different TTL)
+	skipPRCacheRead  bool   // when true, FetchReviewRequestedPRs skips cache read
 }
 
 // ClientOption configures a Client.
@@ -35,6 +37,24 @@ type ClientOption func(*Client)
 func WithCache(c Cacher) ClientOption {
 	return func(cl *Client) {
 		cl.cache = c
+	}
+}
+
+// WithPRCache sets the dedicated PR Cacher used by FetchReviewRequestedPRs.
+// This should be a separate DiskCacher instance with a shorter TTL than the
+// main cache (e.g. 5 minutes vs 4 hours for team/user data).
+func WithPRCache(c Cacher) ClientOption {
+	return func(cl *Client) {
+		cl.prCache = c
+	}
+}
+
+// WithRefresh configures the Client to skip the PR cache read in
+// FetchReviewRequestedPRs, forcing a fresh GraphQL fetch. The result is still
+// written to cache after a successful fetch.
+func WithRefresh() ClientOption {
+	return func(cl *Client) {
+		cl.skipPRCacheRead = true
 	}
 }
 
