@@ -1,0 +1,8 @@
+#!/bin/bash
+# Set up beads redirect so worktrees share the main repo's database.
+# WT_PATH and WT_PROJECT_ROOT are provided by wt.
+
+if [ -d "$WT_PROJECT_ROOT/.beads" ]; then
+  mkdir -p "$WT_PATH/.beads"
+  echo "$WT_PROJECT_ROOT/.beads" > "$WT_PATH/.beads/redirect"
+fi

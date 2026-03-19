@@ -1,3 +1,6 @@
+# Worktree config (override global gitignore)
+!.wt/
+
 # Binaries
 /bin/
 /.bin/
