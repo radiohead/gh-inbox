@@ -1,24 +1,37 @@
 # Agent Instructions: gh-inbox
 
+> Read [CONSTITUTION.md](CONSTITUTION.md) before starting any non-trivial work.
+
 ## Quick Reference
 
 | Resource | Description |
 |----------|-------------|
-| [DESIGN.md](DESIGN.md) | Full design doc: architecture, GraphQL queries, implementation phases |
-| [docs/](docs/) | Detailed specs: architecture and other reference docs |
-| [agent-docs/](agent-docs/) | Agent workflow: doc maintenance, checklists |
+| [CONSTITUTION.md](CONSTITUTION.md) | Project invariants, taste rules, architecture constraints |
+| [DESIGN.md](DESIGN.md) | Architecture index: pipeline, ADRs, package map |
+| [docs/](docs/) | Full documentation: adrs, specs, research, reference |
+| [docs/reference/](docs/reference/) | Workflow docs: beads, doc maintenance, checklists |
+
+For full docs directory layout, see [docs/README.md](docs/README.md).
 
 ## Core Rules
 
-1. **Update docs with every change.** Follow the rules in
-   [doc-maintenance.md](agent-docs/doc-maintenance.md) — every PR should
-   include relevant documentation updates.
+1. **Read CONSTITUTION.md first.** It defines invariants you must not violate
+   without explicit human approval.
 
-2. **Follow stage order.** Stages are sequential (V0.1 before V0.2, etc.).
-   Check that the previous stage's beads task is closed before starting.
+2. **Claim a beads task before starting work.** Set it to `in_progress`.
+   See [docs/reference/beads-workflow.md](docs/reference/beads-workflow.md)
+   for the full workflow.
 
-3. **One PR per feature/stage.** Keep PRs focused. Use the
-   [stage-checklist.md](agent-docs/stage-checklist.md) to verify completeness.
+3. **Close your beads task when done.** Use `bd close inbox-N`
+   after all acceptance criteria are met.
+
+4. **Update docs with every change.** Follow the rules in
+   [docs/reference/doc-maintenance.md](docs/reference/doc-maintenance.md) —
+   every PR should include relevant documentation updates.
+
+5. **One PR per feature/stage.** Keep PRs focused. Use
+   [docs/reference/stage-checklist.md](docs/reference/stage-checklist.md)
+   to verify completeness before closing work.
 
 ## Code Conventions
 
@@ -32,23 +45,18 @@
 
 - **Commit format:** Title (one-liner) / What (description) / Why (rationale).
 
-## Landing the Plane (Session Completion)
+## Session Completion
 
 **When ending a work session**, complete ALL steps:
 
-1. **File issues for remaining work** — create issues for follow-ups
-2. **Run quality gates** (if code changed) — `make test`, linters, builds
-3. **Update issue status** — close finished work, update in-progress items
-4. **Push to remote:**
-   ```bash
-   git pull --rebase
-   git push
-   ```
-5. **Verify** — all changes committed and pushed
+1. File issues for remaining work — `bd create` for follow-ups
+2. Run quality gates (if code changed) — `make test`, linters, builds
+3. Close finished beads tasks — `bd close inbox-N`
+4. Sync beads to remote — `bd dolt push`
+5. Commit and push — `git add <files> && git commit -m "..." && git push`
 
-## Agent Documentation
+## Deeper Context
 
-- [Doc Maintenance](agent-docs/doc-maintenance.md) — rules for which docs to
-  update for which changes
-- [Stage Checklist](agent-docs/stage-checklist.md) — per-stage completion
-  template
+- [docs/README.md](docs/README.md) — full docs directory conventions
+- [DESIGN.md](DESIGN.md) — architecture decisions and package map
+- [CONTRIBUTING.md](CONTRIBUTING.md) — development setup and PR process
