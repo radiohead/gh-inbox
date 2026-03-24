@@ -1,48 +1,66 @@
 # gh-inbox
 
-CLI tool that surfaces GitHub items needing your attention with smart CODEOWNERS filtering
+A `gh` CLI extension that surfaces GitHub items needing your attention with smart CODEOWNERS filtering.
 
-## Quick Start
+## Install
 
 ```bash
-make build
+gh extension install radiohead/gh-inbox
+```
+
+## Usage
+
+```bash
 gh inbox prs review --org grafana              # PRs awaiting my review
-gh inbox prs review --org grafana --filter direct    # hide CODEOWNERS-only noise
-gh inbox prs review --org grafana --filter codeowner # sole CODEOWNERS reviewer
-gh inbox prs authored                          # my PRs needing attention
-gh inbox issues                               # issues needing action
-gh inbox discussions                          # discussions needing response
+gh inbox prs review --org grafana --filter focus       # highest-priority: my team's PRs, direct reviews
+gh inbox prs review --org grafana --filter nearby      # expand to sibling teams
+gh inbox prs review --org grafana --filter-type direct # only directly-assigned reviews
+gh inbox prs review --org grafana --filter-status open # only PRs with no reviews yet
+gh inbox prs review --org grafana --output json        # JSON output for scripting
 ```
 
-## Features
+### Filter Presets
 
-- **CODEOWNERS-aware review filtering** — skip PRs where you're only a CODEOWNERS reviewer and others are assigned
-- **Unresolved thread detection** — surface your PRs where reviewers are waiting for a response
-- **Issue and discussion tracking** — catch mentions and assignments needing action
-- **JSON output** — compose with `jq` for automation and scripting
+| Preset | What It Shows |
+|--------|---------------|
+| `all` (default) | All PRs requesting your review |
+| `focus` | Direct + codeowner reviews from your team (open only) |
+| `nearby` | Expand focus to sibling teams |
+| `org` | All org-internal PRs (excludes external contributors) |
 
-## Pipeline
+### Granular Flags
+
+Combine `--filter-type`, `--filter-source`, and `--filter-status` for precise control:
+
+- `--filter-type`: `direct`, `team`, `codeowner`
+- `--filter-source`: `TEAM`, `GROUP`, `ORG`, `OTHER`
+- `--filter-status`: `open`, `in_review`, `approved`, `all`
+
+## How It Works
 
 ```
-GitHub GraphQL API → github/ → service/ + filter/ → output/
+GitHub GraphQL API → github/ → service/ → output/
 ```
 
 | Stage | Package | Responsibility |
 |-------|---------|----------------|
-| Fetch | `github/` | GraphQL queries, REST calls, auth via `gh auth token` |
-| Cache | `service/` | In-process team membership cache with fail-open semantics |
-| Filter | `filter/` | CODEOWNERS dispatch: all / direct / codeowner modes |
-| Output | `output/` | Table renderer, JSON serializer |
+| Fetch | `internal/github/` | GraphQL queries, REST calls, auth via `gh auth token` |
+| Classify | `internal/service/` | Three-axis PR classification (ReviewType, AuthorSource, ReviewStatus) |
+| Filter | `internal/service/` | Composable filter presets and granular criteria |
+| Output | `internal/output/` | Table renderer, JSON serializer |
+
+### CODEOWNERS-Aware Filtering
+
+GitHub's `asCodeOwner` field is unreliable when CODEOWNERS team auto-assign expands a team into individual users. Instead, `gh-inbox` uses **teammate detection** via `SharesTeamWith` to reliably distinguish direct review requests from CODEOWNERS fan-out.
 
 ## Development
 
 ```bash
 make build   # Build
 make test    # Run all tests
-make lint    # Lint
+make lint    # Lint (golangci-lint)
 ```
 
 ## Project Status
 
-This project follows a staged implementation plan. See [DESIGN.md](DESIGN.md) for
-the full design and roadmap.
+**V0.1** (`prs review`) is implemented. See [VISION.md](VISION.md) for the full roadmap and [DESIGN.md](DESIGN.md) for architecture details.

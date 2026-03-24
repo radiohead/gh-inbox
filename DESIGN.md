@@ -285,14 +285,14 @@ gh-inbox (Go binary)
 
 ## Implementation Phases
 
-| Phase | Scope | Effort |
-|---|---|---|
-| **V0.1** | `gh inbox prs --review` with CODEOWNERS filtering | Small |
-| **V0.2** | `gh inbox prs --authored` with unresolved thread detection | Small |
-| **V0.3** | `gh inbox issues` (assigned, mentioned) | Medium |
-| **V0.4** | `gh inbox discussions` | Small |
-| **V0.5** | `--json` output mode | Small |
-| **V1.0** | Config file, multiple orgs, polish | Medium |
+| Phase | Scope | Effort | Status |
+|---|---|---|---|
+| **V0.1** | `gh inbox prs --review` with CODEOWNERS filtering | Small | **Implemented** |
+| **V0.2** | `gh inbox prs --authored` with unresolved thread detection | Small | Planned |
+| **V0.3** | `gh inbox issues` (assigned, mentioned) | Medium | Planned |
+| **V0.4** | `gh inbox discussions` | Small | Planned |
+| **V0.5** | `--json` output mode | Small | Planned |
+| **V1.0** | Config file, multiple orgs, polish | Medium | Planned |
 
 ---
 
