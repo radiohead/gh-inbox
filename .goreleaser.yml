@@ -31,8 +31,4 @@ changelog:
   disable: true
 
 release:
-  github:
-    owner: radiohead
-    name: gh-inbox
-  draft: false
-  prerelease: auto
+  disable: true
