@@ -28,29 +28,7 @@ checksum:
   name_template: checksums.txt
 
 changelog:
-  use: github
-  sort: asc
-  groups:
-    - title: Features
-      regexp: '^.*?(?:feat|Add|Implement|Filter|Optimize|Rewrite|Rework|Redefine).*$'
-      order: 0
-    - title: Bug Fixes
-      regexp: '^.*?(?:fix|Fix).*$'
-      order: 1
-    - title: Other
-      order: 999
-  filters:
-    exclude:
-      - "^docs:"
-      - "^chore:"
-      - "^ci:"
-      - "^test:"
-      - "(?i)^Sync beads"
-      - "(?i)^Initialize beads"
-      - "(?i)^Restructure beads"
-      - "(?i)^Add CLAUDE"
-      - "(?i)^Add beads"
-      - "(?i)^Migrate to beads"
+  disable: true
 
 release:
   github:
